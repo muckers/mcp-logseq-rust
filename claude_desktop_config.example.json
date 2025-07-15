@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "logseq": {
+      "command": "/path/to/mcp-logseq-rust/target/release/mcp-logseq-rust",
+      "env": {
+        "LOGSEQ_API_TOKEN": "your-logseq-api-token-here",
+        "LOGSEQ_API_URL": "http://localhost:12315"
+      }
+    }
+  }
+}
