@@ -205,7 +205,7 @@ If the MCP server isn't working with AnythingLLM:
 
 ## License
 
-[Your chosen license]
+MIT
 
 ## Contributing
 
