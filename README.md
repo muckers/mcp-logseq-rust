@@ -150,6 +150,29 @@ Make sure you've created a `.env` file with your token or set the environment va
 ### Authentication errors
 Double-check that your API token in the `.env` file matches the one configured in Logseq.
 
+### AnythingLLM Integration Issues
+
+If the MCP server isn't working with AnythingLLM:
+
+1. **Check the configuration file location**: 
+   - Desktop (Mac): `~/Library/Application Support/anythingllm-desktop/storage/plugins/anythingllm_mcp_servers.json`
+   - Desktop (Windows): `%APPDATA%\anythingllm-desktop\storage\plugins\anythingllm_mcp_servers.json`
+   - Desktop (Linux): `~/.config/anythingllm-desktop/storage/plugins/anythingllm_mcp_servers.json`
+
+2. **Verify the configuration format**:
+   - Ensure `"type": "stdio"` is at the same level as `"command"`
+   - Use absolute paths for the command
+   - See `anythingllm_mcp_servers.example.json` for the correct format
+
+3. **Enable debug logging**:
+   - Set `"RUST_LOG": "debug"` in the env section to see detailed logs
+   - Check AnythingLLM's developer console for errors
+
+4. **Common issues**:
+   - Make sure the binary is built in release mode: `cargo build --release`
+   - Ensure the binary has execute permissions: `chmod +x target/release/mcp-logseq-rust`
+   - The server binary must be accessible from AnythingLLM's process
+
 ## License
 
 [Your chosen license]

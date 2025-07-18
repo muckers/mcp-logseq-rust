@@ -1,10 +1,23 @@
+# MCP Logseq Server
+#
+# A Model Context Protocol (MCP) server implementation that provides external tools
+# with access to Logseq's HTTP API. This enables AI assistants, IDEs, and other
+# development tools to read and modify Logseq graph data through a standardized protocol.
+#
+# Features:
+# - JSON-RPC communication over stdin/stdout
+# - Complete Logseq API coverage (query and mutation operations)
+# - Robust error handling with graceful degradation
+# - Environment-based configuration
+# - Comprehensive logging for debugging
+
 [package]
 name = "mcp-logseq-rust"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-mcpr = "0.2.3"
+async-trait = "0.1"
 reqwest = { version = "0.12", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -12,4 +25,4 @@ serde_json = "1.0"
 anyhow = "1.0"
 dotenv = "0.15"
 tracing = "0.1"
-tracing-subscriber = "0.3"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

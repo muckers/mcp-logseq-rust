@@ -1,14 +1,88 @@
+//! # MCP Tools Module
+//!
+//! This module defines and manages all tools available through the MCP server.
+//! Tools are the core interface that clients use to interact with Logseq data.
+//! Each tool has a name, description, and input schema that describes its parameters.
+//!
+//! ## Tool Categories
+//!
+//! - **Query Tools**: Read-only operations that retrieve data from Logseq
+//! - **Mutation Tools**: Write operations that modify Logseq content
+//!
+//! ## Tool Definition
+//!
+//! Each tool must specify:
+//! - Unique name for identification
+//! - Human-readable description
+//! - JSON Schema defining input parameters and their types
+//!
+//! ## Usage
+//!
+//! Tools are registered in `get_all_tools()` and their implementations
+//! are in the respective `query` and `mutate` modules.
+
 pub mod query;
 pub mod mutate;
 
-use mcpr::schema::common::{Tool, ToolInputSchema};
 use serde_json::json;
 use std::collections::HashMap;
 
+/// Represents a single MCP tool with its metadata and input schema.
+///
+/// Each tool exposed through the MCP interface is represented by this struct,
+/// which contains all the information clients need to understand and invoke the tool.
+#[derive(Debug, Clone)]
+pub struct Tool {
+    /// Unique identifier for the tool (used in tool calls)
+    pub name: String,
+    /// Human-readable description of what the tool does
+    pub description: Option<String>,
+    /// JSON Schema definition of the tool's input parameters
+    pub input_schema: ToolInputSchema,
+}
+
+/// JSON Schema definition for a tool's input parameters.
+///
+/// Follows the JSON Schema specification to describe what parameters
+/// a tool accepts, their types, and which ones are required.
+#[derive(Debug, Clone)]
+pub struct ToolInputSchema {
+    /// The schema type (typically "object" for tools)
+    pub r#type: String,
+    /// Definition of each parameter with its type and constraints
+    pub properties: Option<HashMap<String, serde_json::Value>>,
+    /// List of parameter names that are required
+    pub required: Option<Vec<String>>,
+}
+
+/// Returns a complete list of all tools available through this MCP server.
+///
+/// This function registers and configures all tools that clients can invoke.
+/// Each tool is defined with its name, description, and input schema.
+/// The tools are organized into two categories: query tools (read-only)
+/// and mutation tools (write operations).
+///
+/// ## Tool Registration
+///
+/// Tools must be added here to be discoverable by MCP clients. Each tool
+/// definition includes:
+/// - A unique name used in tool calls
+/// - A description explaining what the tool does
+/// - A JSON Schema defining expected parameters
+///
+/// ## Schema Guidelines
+///
+/// - Use "object" type for tools with parameters
+/// - Define all parameters in the properties map
+/// - List required parameters in the required array
+/// - Include descriptions for each parameter
 pub fn get_all_tools() -> Vec<Tool> {
     let mut tools = vec![];
     
-    // Query tools
+    // ==========================================================================
+    // Query Tools - Read-only operations
+    // ==========================================================================
+    
     tools.push(Tool {
         name: "list_graphs".to_string(),
         description: Some("List available Logseq graphs".to_string()),
@@ -80,7 +154,10 @@ pub fn get_all_tools() -> Vec<Tool> {
         },
     });
     
-    // Write tools
+    // ==========================================================================
+    // Mutation Tools - Write operations that modify Logseq content
+    // ==========================================================================
+    
     tools.push(Tool {
         name: "create_page".to_string(),
         description: Some("Create a new page with optional content".to_string()),
@@ -123,16 +200,17 @@ pub fn get_all_tools() -> Vec<Tool> {
         },
     });
     
+    // Insert block tool has complex positioning logic worth documenting
     tools.push(Tool {
         name: "insert_block".to_string(),
-        description: Some("Insert a new block".to_string()),
+        description: Some("Insert a new block with precise positioning control".to_string()),
         input_schema: ToolInputSchema {
             r#type: "object".to_string(),
             properties: Some({
                 let mut props = HashMap::new();
                 props.insert("parent_uuid".to_string(), json!({
                     "type": "string",
-                    "description": "UUID of the parent block"
+                    "description": "UUID of the parent block or page"
                 }));
                 props.insert("content".to_string(), json!({
                     "type": "string",
