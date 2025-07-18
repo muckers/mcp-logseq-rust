@@ -67,7 +67,9 @@ Or use the compiled binary:
 ./target/release/mcp-logseq-rust
 ```
 
-### Configuring with Claude Desktop
+### Client Configuration
+
+#### Claude Desktop
 
 Add the following to your Claude Desktop configuration file:
 
@@ -88,11 +90,39 @@ Add the following to your Claude Desktop configuration file:
 }
 ```
 
+#### AnythingLLM
+
+Add the following to your AnythingLLM MCP servers configuration file:
+
+**On macOS**: `~/Library/Application Support/anythingllm-desktop/storage/plugins/anythingllm_mcp_servers.json`
+**On Windows**: `%APPDATA%\anythingllm-desktop\storage\plugins\anythingllm_mcp_servers.json`
+**On Linux**: `~/.config/anythingllm-desktop/storage/plugins/anythingllm_mcp_servers.json`
+
+```json
+{
+  "mcpServers": {
+    "logseq": {
+      "command": "/path/to/mcp-logseq-rust/target/release/mcp-logseq-rust",
+      "args": [],
+      "type": "stdio",
+      "env": {
+        "LOGSEQ_API_TOKEN": "your-logseq-api-token",
+        "LOGSEQ_API_URL": "http://localhost:12315",
+        "RUST_LOG": "error"
+      },
+      "anythingllm": {
+        "autoStart": true
+      }
+    }
+  }
+}
+```
+
 Replace `/path/to/mcp-logseq-rust` with the actual path to your project directory.
 
-## Example Usage in Claude
+## Example Usage
 
-Once configured, you can interact with your Logseq graph through Claude:
+Once configured, you can interact with your Logseq graph through Claude Desktop or AnythingLLM:
 
 ```
 "Can you show me all pages in my Logseq graph?"
