@@ -103,7 +103,7 @@ Add the following to your AnythingLLM MCP servers configuration file:
 {
   "mcpServers": {
     "logseq": {
-      "command": "/home/rjf/code/sandbox/mcp-logseq-rust/target/release/mcp-logseq-rust",
+      "command": "<PATH-TO>/mcp-logseq-rust",
       "args": [],
       "type": "stdio",
       "env": {
