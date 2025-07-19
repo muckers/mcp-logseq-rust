@@ -80,9 +80,10 @@ Add the following to your Claude Desktop configuration file:
 {
   "mcpServers": {
     "logseq": {
-      "command": "/path/to/mcp-logseq-rust/target/release/mcp-logseq-rust",
+      "command": "<PATH-TO>/mcp-logseq-rust",
+      "args": [],
       "env": {
-        "LOGSEQ_API_TOKEN": "your-logseq-api-token",
+        "LOGSEQ_API_TOKEN": "your token here",
         "LOGSEQ_API_URL": "http://localhost:12315"
       }
     }
@@ -102,13 +103,12 @@ Add the following to your AnythingLLM MCP servers configuration file:
 {
   "mcpServers": {
     "logseq": {
-      "command": "/path/to/mcp-logseq-rust/target/release/mcp-logseq-rust",
+      "command": "/home/rjf/code/sandbox/mcp-logseq-rust/target/release/mcp-logseq-rust",
       "args": [],
       "type": "stdio",
       "env": {
-        "LOGSEQ_API_TOKEN": "your-logseq-api-token",
-        "LOGSEQ_API_URL": "http://localhost:12315",
-        "RUST_LOG": "error"
+        "LOGSEQ_API_TOKEN": "your-logseq-api-token-here",
+        "LOGSEQ_API_URL": "http://localhost:12315"
       },
       "anythingllm": {
         "autoStart": true
