@@ -147,12 +147,6 @@ src/
     └── mutate.rs     # Write operations
 ```
 
-### Running Tests
-
-```bash
-cargo test
-```
-
 ### Debugging
 
 Set the `RUST_LOG` environment variable for more detailed logging:
