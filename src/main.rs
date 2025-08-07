@@ -20,8 +20,10 @@
 //! - Configurable via environment variables
 
 mod config;
+mod error;
 mod logseq_client;
 mod models;
+mod protocol;
 mod tools;
 
 use anyhow::Result;
@@ -33,6 +35,7 @@ use tracing_subscriber::EnvFilter;
 use crate::{
     config::Config,
     logseq_client::LogseqClient,
+    protocol::{JsonRpcRequest, ResponseBuilder, HandlerResponse, parse_request, error_codes},
     tools::{query, mutate},
 };
 
@@ -90,31 +93,33 @@ async fn run_mcp_server(client: Arc<LogseqClient>) -> Result<()> {
         }
 
         // Parse the JSON-RPC request
-        let request: Value = match serde_json::from_str(&line) {
+        let request = match parse_request(&line) {
             Ok(req) => {
-                eprintln!("[DEBUG] Received request: {}", serde_json::to_string(&req).unwrap_or_else(|_| "invalid".to_string()));
+                eprintln!("[DEBUG] Received request: method={}, id={:?}", req.method, req.id);
                 req
             },
             Err(e) => {
-                eprintln!("[ERROR] Failed to parse JSON: {} - Line: {}", e, line);
+                eprintln!("[ERROR] Failed to parse JSON: {}", e);
+                let error_response = ResponseBuilder::parse_error();
+                let error_str = serde_json::to_string(&error_response)?;
+                writeln!(stdout, "{}", error_str)?;
+                stdout.flush()?;
                 continue;
             }
         };
         
         // Handle the request and generate a response
-        let response = handle_request(request, &client).await?;
+        let response = handle_request(request, &client).await;
         
-        // Check if we should skip the response (for notifications)
-        // Notifications don't require responses per JSON-RPC spec
-        if let Some(skip) = response.get("_skip_response") {
-            if skip.as_bool().unwrap_or(false) {
-                eprintln!("[DEBUG] Skipping response for notification");
-                continue;
-            }
+        // Check if this is a notification (no response needed)
+        if response.is_notification_ack() {
+            eprintln!("[DEBUG] Skipping response for notification");
+            continue;
         }
         
         // Send response back to client via stdout
-        let response_str = serde_json::to_string(&response)?;
+        let response_str = response.to_string()
+            .map_err(|e| anyhow::anyhow!("Failed to serialize response: {}", e))?;
         writeln!(stdout, "{}", response_str)?;
         stdout.flush()?;
     }
@@ -141,12 +146,12 @@ async fn run_mcp_server(client: Arc<LogseqClient>) -> Result<()> {
 ///
 /// Unknown methods return a JSON-RPC error with code -32601 (Method not found).
 /// The ID is preserved from the request, or defaults to 0 for malformed requests.
-async fn handle_request(request: Value, client: &Arc<LogseqClient>) -> Result<Value> {
+async fn handle_request(request: JsonRpcRequest, client: &Arc<LogseqClient>) -> HandlerResponse {
     // Ensure we always have a valid ID - never use null per JSON-RPC spec
-    let id = request.get("id").cloned().unwrap_or(json!(0));
-    let method = request.get("method").and_then(|m| m.as_str()).unwrap_or("");
+    let id = request.id.clone().unwrap_or(json!(0));
+    let method = &request.method;
     
-    match method {
+    match method.as_str() {
         "initialize" => handle_initialize(id),
         "initialized" => handle_initialized(id),
         "notifications/initialized" => handle_notifications_initialized(id),
@@ -155,14 +160,11 @@ async fn handle_request(request: Value, client: &Arc<LogseqClient>) -> Result<Va
         "tools/call" => handle_tool_call(id, request, client).await,
         _ => {
             eprintln!("[DEBUG] Unknown method: {}", method);
-            Ok(json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "error": {
-                    "code": -32601,
-                    "message": format!("Method '{}' not found", method)
-                }
-            }))
+            HandlerResponse::error(
+                id,
+                error_codes::METHOD_NOT_FOUND,
+                format!("Method '{}' not found", method)
+            )
         }
     }
 }
@@ -179,37 +181,33 @@ async fn handle_request(request: Value, client: &Arc<LogseqClient>) -> Result<Va
 /// - Protocol version (2024-11-05)
 /// - Server capabilities (tools support)
 /// - List of all available tools with their schemas
-fn handle_initialize(id: Value) -> Result<Value> {
+fn handle_initialize(id: Value) -> HandlerResponse {
     let tools = tools::get_all_tools();
     
-    let response = json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "result": {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {
-                "tools": {},
-                "logseq": true
-            },
-            "serverInfo": {
-                "name": "mcp-logseq-rust",
-                "version": "1.0.0"
-            },
-            "tools": tools.iter().map(|tool| {
-                json!({
-                    "name": tool.name,
-                    "description": tool.description.as_ref().unwrap_or(&"".to_string()),
-                    "inputSchema": {
-                        "type": tool.input_schema.r#type,
-                        "properties": tool.input_schema.properties.as_ref().unwrap_or(&std::collections::HashMap::new()),
-                        "required": tool.input_schema.required.as_ref().unwrap_or(&Vec::new())
-                    }
-                })
-            }).collect::<Vec<_>>()
-        }
+    let result = json!({
+        "protocolVersion": "2024-11-05",
+        "capabilities": {
+            "tools": {},
+            "logseq": true
+        },
+        "serverInfo": {
+            "name": "mcp-logseq-rust",
+            "version": "1.0.0"
+        },
+        "tools": tools.iter().map(|tool| {
+            json!({
+                "name": tool.name,
+                "description": tool.description.as_ref().unwrap_or(&"".to_string()),
+                "inputSchema": {
+                    "type": tool.input_schema.r#type,
+                    "properties": tool.input_schema.properties.as_ref().unwrap_or(&std::collections::HashMap::new()),
+                    "required": tool.input_schema.required.as_ref().unwrap_or(&Vec::new())
+                }
+            })
+        }).collect::<Vec<_>>()
     });
     
-    Ok(response)
+    HandlerResponse::success(id, result)
 }
 
 /// Handles the MCP `initialized` notification.
@@ -223,48 +221,35 @@ fn handle_initialize(id: Value) -> Result<Value> {
 ///
 /// - If sent as notification (id is null): returns skip marker
 /// - If sent as request (with id): returns empty result object
-fn handle_initialized(id: Value) -> Result<Value> {
+fn handle_initialized(id: Value) -> HandlerResponse {
     eprintln!("[DEBUG] Received 'initialized' notification");
     
     // If it's a notification (no id), don't send a response per MCP spec
     if id.is_null() {
         eprintln!("[DEBUG] Skipping response for notification");
-        // Return a special marker that we'll check for in the main loop
-        return Ok(json!({"_skip_response": true}));
+        return HandlerResponse::notification_ack();
     }
     
     // Some clients send this as a request, so acknowledge with empty result
-    Ok(json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "result": {}
-    }))
+    HandlerResponse::success(id, json!({}))
 }
 
 /// Handles ping requests for server health checking.
 ///
 /// Returns an empty result object to indicate the server is alive and responsive.
 /// This can be used by clients to verify the server is still operational.
-fn handle_ping(id: Value) -> Result<Value> {
+fn handle_ping(id: Value) -> HandlerResponse {
     eprintln!("[DEBUG] Received 'ping' request");
-    Ok(json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "result": {}
-    }))
+    HandlerResponse::success(id, json!({}))
 }
 
 /// Handles alternative initialization notification format.
 ///
 /// Some MCP clients may use this method name instead of the standard
 /// `initialized` notification. Returns an empty result for compatibility.
-fn handle_notifications_initialized(id: Value) -> Result<Value> {
+fn handle_notifications_initialized(id: Value) -> HandlerResponse {
     eprintln!("[DEBUG] Received 'notifications/initialized' request");
-    Ok(json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "result": {}
-    }))
+    HandlerResponse::success(id, json!({}))
 }
 
 /// Handles the MCP `tools/list` request.
@@ -279,28 +264,26 @@ fn handle_notifications_initialized(id: Value) -> Result<Value> {
 /// - `name`: Unique identifier for the tool
 /// - `description`: Human-readable description of what the tool does
 /// - `inputSchema`: JSON Schema defining expected parameters
-fn handle_tools_list(id: Value) -> Result<Value> {
+fn handle_tools_list(id: Value) -> HandlerResponse {
     let tools = tools::get_all_tools();
     
     eprintln!("[DEBUG] Handling tools/list request");
     
-    Ok(json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "result": {
-            "tools": tools.iter().map(|tool| {
-                json!({
-                    "name": tool.name,
-                    "description": tool.description.as_ref().unwrap_or(&"".to_string()),
-                    "inputSchema": {
-                        "type": tool.input_schema.r#type,
-                        "properties": tool.input_schema.properties.as_ref().unwrap_or(&std::collections::HashMap::new()),
-                        "required": tool.input_schema.required.as_ref().unwrap_or(&Vec::new())
-                    }
-                })
-            }).collect::<Vec<_>>()
-        }
-    }))
+    let result = json!({
+        "tools": tools.iter().map(|tool| {
+            json!({
+                "name": tool.name,
+                "description": tool.description.as_ref().unwrap_or(&"".to_string()),
+                "inputSchema": {
+                    "type": tool.input_schema.r#type,
+                    "properties": tool.input_schema.properties.as_ref().unwrap_or(&std::collections::HashMap::new()),
+                    "required": tool.input_schema.required.as_ref().unwrap_or(&Vec::new())
+                }
+            })
+        }).collect::<Vec<_>>()
+    });
+    
+    HandlerResponse::success(id, result)
 }
 
 /// Handles the MCP `tools/call` request to execute a specific tool.
@@ -328,10 +311,18 @@ fn handle_tools_list(id: Value) -> Result<Value> {
 ///
 /// Query tools: list_graphs, list_pages, get_page, get_block, search
 /// Mutation tools: create_page, update_block, insert_block, delete_block, append_to_page
-async fn handle_tool_call(id: Value, request: Value, client: &Arc<LogseqClient>) -> Result<Value> {
+async fn handle_tool_call(id: Value, request: JsonRpcRequest, client: &Arc<LogseqClient>) -> HandlerResponse {
     // Extract tool name and parameters from the MCP request format
-    let params = request.get("params").ok_or_else(|| anyhow::anyhow!("Missing params"))?;
-    let tool_name = params.get("name").and_then(|n| n.as_str()).ok_or_else(|| anyhow::anyhow!("Missing tool name"))?;
+    let params = match request.params {
+        Some(ref p) => p,
+        None => return HandlerResponse::error(id, error_codes::INVALID_PARAMS, "Missing params".to_string()),
+    };
+    
+    let tool_name = match params.get("name").and_then(|n| n.as_str()) {
+        Some(name) => name,
+        None => return HandlerResponse::error(id, error_codes::INVALID_PARAMS, "Missing tool name".to_string()),
+    };
+    
     let default_params = json!({});
     let tool_params = params.get("arguments").unwrap_or(&default_params);
     
@@ -352,24 +343,23 @@ async fn handle_tool_call(id: Value, request: Value, client: &Arc<LogseqClient>)
     
     // Format the response according to MCP protocol
     match result {
-        Ok(tool_result) => Ok(json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "result": {
+        Ok(tool_result) => {
+            let text = match serde_json::to_string_pretty(&tool_result) {
+                Ok(t) => t,
+                Err(e) => return HandlerResponse::error(id, error_codes::INTERNAL_ERROR, format!("Failed to serialize result: {}", e)),
+            };
+            HandlerResponse::success(id, json!({
                 "content": [{
                     "type": "text",
-                    "text": serde_json::to_string_pretty(&tool_result)?
+                    "text": text
                 }]
-            }
-        })),
-        Err(e) => Ok(json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "error": {
-                "code": -32603,
-                "message": format!("Tool execution failed: {}", e)
-            }
-        }))
+            }))
+        },
+        Err(e) => HandlerResponse::error(
+            id,
+            error_codes::INTERNAL_ERROR,
+            format!("Tool execution failed: {}", e)
+        )
     }
 }
 

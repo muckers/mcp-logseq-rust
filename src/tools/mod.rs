@@ -21,11 +21,12 @@
 //! Tools are registered in `get_all_tools()` and their implementations
 //! are in the respective `query` and `mutate` modules.
 
+pub mod builder;
 pub mod query;
 pub mod mutate;
 
-use serde_json::json;
 use std::collections::HashMap;
+use builder::{ToolBuilder, simple_tool, single_string_param_tool};
 
 /// Represents a single MCP tool with its metadata and input schema.
 ///
@@ -77,193 +78,77 @@ pub struct ToolInputSchema {
 /// - List required parameters in the required array
 /// - Include descriptions for each parameter
 pub fn get_all_tools() -> Vec<Tool> {
-    let mut tools = vec![];
+    vec![
+        // ==========================================================================
+        // Query Tools - Read-only operations
+        // ==========================================================================
+        
+        simple_tool(
+            "list_graphs",
+            "List available Logseq graphs"
+        ),
+        
+        simple_tool(
+            "list_pages",
+            "List all pages in the current graph"
+        ),
+        
+        single_string_param_tool(
+            "get_page",
+            "Get content of a specific page by name",
+            "page_name",
+            "Name of the page to retrieve"
+        ),
+        
+        single_string_param_tool(
+            "get_block",
+            "Get a specific block by its UUID",
+            "uuid",
+            "UUID of the block to retrieve"
+        ),
+        
+        single_string_param_tool(
+            "search",
+            "Search across all pages in the graph",
+            "query",
+            "Search query string"
+        ),
     
-    // ==========================================================================
-    // Query Tools - Read-only operations
-    // ==========================================================================
-    
-    tools.push(Tool {
-        name: "list_graphs".to_string(),
-        description: Some("List available Logseq graphs".to_string()),
-        input_schema: ToolInputSchema {
-            r#type: "object".to_string(),
-            properties: Some(HashMap::new()),
-            required: None,
-        },
-    });
-    
-    tools.push(Tool {
-        name: "list_pages".to_string(),
-        description: Some("List all pages in the current graph".to_string()),
-        input_schema: ToolInputSchema {
-            r#type: "object".to_string(),
-            properties: Some(HashMap::new()),
-            required: None,
-        },
-    });
-    
-    tools.push(Tool {
-        name: "get_page".to_string(),
-        description: Some("Get content of a specific page by name".to_string()),
-        input_schema: ToolInputSchema {
-            r#type: "object".to_string(),
-            properties: Some({
-                let mut props = HashMap::new();
-                props.insert("page_name".to_string(), json!({
-                    "type": "string",
-                    "description": "Name of the page to retrieve"
-                }));
-                props
-            }),
-            required: Some(vec!["page_name".to_string()]),
-        },
-    });
-    
-    tools.push(Tool {
-        name: "get_block".to_string(),
-        description: Some("Get a specific block by its UUID".to_string()),
-        input_schema: ToolInputSchema {
-            r#type: "object".to_string(),
-            properties: Some({
-                let mut props = HashMap::new();
-                props.insert("uuid".to_string(), json!({
-                    "type": "string",
-                    "description": "UUID of the block to retrieve"
-                }));
-                props
-            }),
-            required: Some(vec!["uuid".to_string()]),
-        },
-    });
-    
-    tools.push(Tool {
-        name: "search".to_string(),
-        description: Some("Search across all pages in the graph".to_string()),
-        input_schema: ToolInputSchema {
-            r#type: "object".to_string(),
-            properties: Some({
-                let mut props = HashMap::new();
-                props.insert("query".to_string(), json!({
-                    "type": "string",
-                    "description": "Search query string"
-                }));
-                props
-            }),
-            required: Some(vec!["query".to_string()]),
-        },
-    });
-    
-    // ==========================================================================
-    // Mutation Tools - Write operations that modify Logseq content
-    // ==========================================================================
-    
-    tools.push(Tool {
-        name: "create_page".to_string(),
-        description: Some("Create a new page with optional content".to_string()),
-        input_schema: ToolInputSchema {
-            r#type: "object".to_string(),
-            properties: Some({
-                let mut props = HashMap::new();
-                props.insert("page_name".to_string(), json!({
-                    "type": "string",
-                    "description": "Name of the page to create"
-                }));
-                props.insert("content".to_string(), json!({
-                    "type": "string",
-                    "description": "Initial content for the page (optional)"
-                }));
-                props
-            }),
-            required: Some(vec!["page_name".to_string()]),
-        },
-    });
-    
-    tools.push(Tool {
-        name: "update_block".to_string(),
-        description: Some("Update the content of an existing block".to_string()),
-        input_schema: ToolInputSchema {
-            r#type: "object".to_string(),
-            properties: Some({
-                let mut props = HashMap::new();
-                props.insert("uuid".to_string(), json!({
-                    "type": "string",
-                    "description": "UUID of the block to update"
-                }));
-                props.insert("content".to_string(), json!({
-                    "type": "string",
-                    "description": "New content for the block"
-                }));
-                props
-            }),
-            required: Some(vec!["uuid".to_string(), "content".to_string()]),
-        },
-    });
-    
-    // Insert block tool has complex positioning logic worth documenting
-    tools.push(Tool {
-        name: "insert_block".to_string(),
-        description: Some("Insert a new block with precise positioning control".to_string()),
-        input_schema: ToolInputSchema {
-            r#type: "object".to_string(),
-            properties: Some({
-                let mut props = HashMap::new();
-                props.insert("parent_uuid".to_string(), json!({
-                    "type": "string",
-                    "description": "UUID of the parent block or page"
-                }));
-                props.insert("content".to_string(), json!({
-                    "type": "string",
-                    "description": "Content for the new block"
-                }));
-                props.insert("sibling".to_string(), json!({
-                    "type": "boolean",
-                    "description": "Whether to insert as sibling (true) or child (false)",
-                    "default": false
-                }));
-                props
-            }),
-            required: Some(vec!["parent_uuid".to_string(), "content".to_string()]),
-        },
-    });
-    
-    tools.push(Tool {
-        name: "delete_block".to_string(),
-        description: Some("Delete a block by its UUID".to_string()),
-        input_schema: ToolInputSchema {
-            r#type: "object".to_string(),
-            properties: Some({
-                let mut props = HashMap::new();
-                props.insert("uuid".to_string(), json!({
-                    "type": "string",
-                    "description": "UUID of the block to delete"
-                }));
-                props
-            }),
-            required: Some(vec!["uuid".to_string()]),
-        },
-    });
-    
-    tools.push(Tool {
-        name: "append_to_page".to_string(),
-        description: Some("Append a block to the end of a page".to_string()),
-        input_schema: ToolInputSchema {
-            r#type: "object".to_string(),
-            properties: Some({
-                let mut props = HashMap::new();
-                props.insert("page_name".to_string(), json!({
-                    "type": "string",
-                    "description": "Name of the page to append to"
-                }));
-                props.insert("content".to_string(), json!({
-                    "type": "string",
-                    "description": "Content to append"
-                }));
-                props
-            }),
-            required: Some(vec!["page_name".to_string(), "content".to_string()]),
-        },
-    });
-    
-    tools
+        // ==========================================================================
+        // Mutation Tools - Write operations that modify Logseq content
+        // ==========================================================================
+        
+        ToolBuilder::new("create_page")
+            .description("Create a new page with optional content")
+            .string_param("page_name", "Name of the page to create", true)
+            .string_param("content", "Initial content for the page (optional)", false)
+            .build(),
+        
+        ToolBuilder::new("update_block")
+            .description("Update the content of an existing block")
+            .string_param("uuid", "UUID of the block to update", true)
+            .string_param("content", "New content for the block", true)
+            .build(),
+        
+        // Insert block tool has complex positioning logic
+        ToolBuilder::new("insert_block")
+            .description("Insert a new block with precise positioning control")
+            .string_param("parent_uuid", "UUID of the parent block or page", true)
+            .string_param("content", "Content for the new block", true)
+            .bool_param("sibling", "Whether to insert as sibling (true) or child (false)", Some(false), false)
+            .build(),
+        
+        single_string_param_tool(
+            "delete_block",
+            "Delete a block by its UUID",
+            "uuid",
+            "UUID of the block to delete"
+        ),
+        
+        ToolBuilder::new("append_to_page")
+            .description("Append a block to the end of a page")
+            .string_param("page_name", "Name of the page to append to", true)
+            .string_param("content", "Content to append", true)
+            .build(),
+    ]
 }
