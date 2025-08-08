@@ -79,6 +79,7 @@ impl ToolBuilder {
     }
 
     /// Adds an integer parameter to the tool
+    #[allow(dead_code)]
     pub fn int_param(
         mut self,
         name: impl Into<String>,

@@ -7,6 +7,7 @@ use thiserror::Error;
 
 /// Main error type for the MCP Logseq server
 #[derive(Error, Debug)]
+#[allow(dead_code)]
 pub enum McpError {
     /// Configuration-related errors
     #[error("Configuration error: {0}")]
@@ -52,26 +53,32 @@ impl From<anyhow::Error> for McpError {
 }
 
 /// Result type alias using our custom error
+#[allow(dead_code)]
 pub type McpResult<T> = Result<T, McpError>;
 
 /// Helper functions for creating specific errors
+#[allow(dead_code)]
 impl McpError {
     pub fn config(msg: impl Into<String>) -> Self {
         McpError::Config(msg.into())
     }
 
+    #[allow(dead_code)]
     pub fn logseq_api(msg: impl Into<String>) -> Self {
         McpError::LogseqApi(msg.into())
     }
 
+    #[allow(dead_code)]
     pub fn protocol(msg: impl Into<String>) -> Self {
         McpError::Protocol(msg.into())
     }
 
+    #[allow(dead_code)]
     pub fn tool_execution(msg: impl Into<String>) -> Self {
         McpError::ToolExecution(msg.into())
     }
 
+    #[allow(dead_code)]
     pub fn invalid_params(msg: impl Into<String>) -> Self {
         McpError::InvalidParams(msg.into())
     }

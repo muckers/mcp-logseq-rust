@@ -92,7 +92,7 @@ impl LogseqClient {
         };
 
         let response = self.client
-            .post(&format!("{}/api", self.config.logseq_api_url))
+            .post(format!("{}/api", self.config.logseq_api_url))
             .headers(headers)
             .json(&request)
             .send()

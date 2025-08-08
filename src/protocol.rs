@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 /// JSON-RPC 2.0 Request structure
 #[derive(Debug, Deserialize, Clone)]
 pub struct JsonRpcRequest {
+    #[allow(dead_code)]
     pub jsonrpc: String,
     pub method: String,
     pub params: Option<Value>,
@@ -43,6 +44,7 @@ pub struct JsonRpcError {
 /// Standard JSON-RPC error codes
 pub mod error_codes {
     pub const PARSE_ERROR: i32 = -32700;
+    #[allow(dead_code)]
     pub const INVALID_REQUEST: i32 = -32600;
     pub const METHOD_NOT_FOUND: i32 = -32601;
     pub const INVALID_PARAMS: i32 = -32602;
@@ -78,6 +80,7 @@ impl ResponseBuilder {
     }
 
     /// Creates an error response with additional data
+    #[allow(dead_code)]
     pub fn error_with_data(id: Value, code: i32, message: String, data: Value) -> JsonRpcResponse {
         JsonRpcResponse {
             jsonrpc: "2.0".to_string(),
@@ -92,6 +95,7 @@ impl ResponseBuilder {
     }
 
     /// Creates a method not found error
+    #[allow(dead_code)]
     pub fn method_not_found(id: Value, method: &str) -> JsonRpcResponse {
         Self::error(
             id,
@@ -101,11 +105,13 @@ impl ResponseBuilder {
     }
 
     /// Creates an internal error response
+    #[allow(dead_code)]
     pub fn internal_error(id: Value, message: String) -> JsonRpcResponse {
         Self::error(id, error_codes::INTERNAL_ERROR, message)
     }
 
     /// Creates an invalid params error
+    #[allow(dead_code)]
     pub fn invalid_params(id: Value, message: String) -> JsonRpcResponse {
         Self::error(id, error_codes::INVALID_PARAMS, message)
     }
@@ -121,6 +127,7 @@ impl ResponseBuilder {
 
     /// Creates a notification acknowledgment (for internal use)
     /// This returns a special marker that indicates no response should be sent
+    #[allow(dead_code)]
     pub fn notification_ack() -> Value {
         json!({"_skip_response": true})
     }
@@ -133,17 +140,20 @@ pub fn parse_request(input: &str) -> Result<JsonRpcRequest> {
 }
 
 /// Serializes a JSON-RPC response to a string
+#[allow(dead_code)]
 pub fn serialize_response(response: &JsonRpcResponse) -> Result<String> {
     serde_json::to_string(response)
         .map_err(|e| anyhow::anyhow!("Failed to serialize response: {}", e))
 }
 
 /// Checks if a request is a notification (no ID means notification)
+#[allow(dead_code)]
 pub fn is_notification(request: &JsonRpcRequest) -> bool {
     request.id.is_none()
 }
 
 /// Ensures we have a valid ID for responses (never null per JSON-RPC spec)
+#[allow(dead_code)]
 pub fn ensure_valid_id(id: Option<Value>) -> Value {
     id.unwrap_or(json!(0))
 }
