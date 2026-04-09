@@ -35,8 +35,8 @@ impl HandlerResponse {
         matches!(self, HandlerResponse::NotificationAck)
     }
 
-    /// Converts to string for output
-    pub fn to_string(&self) -> Result<String, serde_json::Error> {
+    /// Serializes to JSON string for output
+    pub fn serialize(&self) -> Result<String, serde_json::Error> {
         match self {
             HandlerResponse::Response(resp) => serde_json::to_string(resp),
             HandlerResponse::NotificationAck => Ok(String::new()),

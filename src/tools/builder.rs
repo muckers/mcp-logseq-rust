@@ -3,9 +3,9 @@
 //! Provides a fluent builder API for creating tool definitions,
 //! reducing boilerplate and improving readability.
 
-use std::collections::HashMap;
-use serde_json::{Value, json};
 use super::{Tool, ToolInputSchema};
+use serde_json::{Value, json};
+use std::collections::HashMap;
 
 /// Builder for creating tool definitions with a fluent API
 pub struct ToolBuilder {
@@ -66,11 +66,11 @@ impl ToolBuilder {
             "type": "boolean",
             "description": description.into()
         });
-        
+
         if let Some(default_val) = default {
             param_def["default"] = json!(default_val);
         }
-        
+
         self.properties.insert(param_name.clone(), param_def);
         if required {
             self.required.push(param_name);
@@ -124,9 +124,7 @@ impl ToolBuilder {
 
 /// Helper function to create a simple tool without parameters
 pub fn simple_tool(name: impl Into<String>, description: impl Into<String>) -> Tool {
-    ToolBuilder::new(name)
-        .description(description)
-        .build()
+    ToolBuilder::new(name).description(description).build()
 }
 
 /// Helper function to create a tool with a single required string parameter

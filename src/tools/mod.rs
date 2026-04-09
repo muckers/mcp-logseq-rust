@@ -22,11 +22,27 @@
 //! are in the respective `query` and `mutate` modules.
 
 pub mod builder;
-pub mod query;
 pub mod mutate;
+pub mod query;
 
-use std::collections::HashMap;
 use builder::{ToolBuilder, simple_tool, single_string_param_tool};
+use serde_json::{Value, json};
+use std::collections::HashMap;
+
+impl Tool {
+    /// Serializes this tool to the JSON format expected by MCP clients.
+    pub fn to_json(&self) -> Value {
+        json!({
+            "name": self.name,
+            "description": self.description.as_deref().unwrap_or(""),
+            "inputSchema": {
+                "type": self.input_schema.r#type,
+                "properties": self.input_schema.properties.as_ref().unwrap_or(&HashMap::new()),
+                "required": self.input_schema.required.as_ref().unwrap_or(&Vec::new())
+            }
+        })
+    }
+}
 
 /// Represents a single MCP tool with its metadata and input schema.
 ///
@@ -82,73 +98,121 @@ pub fn get_all_tools() -> Vec<Tool> {
         // ==========================================================================
         // Query Tools - Read-only operations
         // ==========================================================================
-        
-        simple_tool(
-            "list_graphs",
-            "List available Logseq graphs"
-        ),
-        
-        simple_tool(
-            "list_pages",
-            "List all pages in the current graph"
-        ),
-        
+        simple_tool("list_graphs", "List available Logseq graphs"),
+        ToolBuilder::new("list_pages")
+            .description("List pages in the current graph, with optional name filter and limit")
+            .string_param(
+                "name_contains",
+                "Filter pages whose name contains this substring (case-insensitive)",
+                false,
+            )
+            .string_param(
+                "limit",
+                "Maximum number of pages to return (default: 100)",
+                false,
+            )
+            .build(),
         single_string_param_tool(
             "get_page",
             "Get content of a specific page by name",
             "page_name",
-            "Name of the page to retrieve"
+            "Name of the page to retrieve",
         ),
-        
         single_string_param_tool(
             "get_block",
             "Get a specific block by its UUID",
             "uuid",
-            "UUID of the block to retrieve"
+            "UUID of the block to retrieve",
         ),
-        
         single_string_param_tool(
             "search",
-            "Search across all pages in the graph",
+            "Full-text search across all pages and blocks in the graph",
             "query",
-            "Search query string"
+            "Search query string",
         ),
-    
+        single_string_param_tool(
+            "query",
+            "Run a Datascript/Datalog query against the graph database for precise structured queries",
+            "query",
+            "Datalog query string, e.g. [:find ?n :where [?b :block/name ?n]]",
+        ),
+        simple_tool(
+            "get_today_journal",
+            "Get the content of today's journal page",
+        ),
+        single_string_param_tool(
+            "get_page_references",
+            "Get all blocks that link to a given page (backlinks)",
+            "page_name",
+            "Name of the page to find references for",
+        ),
+        single_string_param_tool(
+            "get_block_properties",
+            "Get all properties (tags, type, priority, etc.) on a specific block",
+            "uuid",
+            "UUID of the block",
+        ),
         // ==========================================================================
         // Mutation Tools - Write operations that modify Logseq content
         // ==========================================================================
-        
         ToolBuilder::new("create_page")
-            .description("Create a new page with optional content")
+            .description("Create a new page with optional initial content")
             .string_param("page_name", "Name of the page to create", true)
             .string_param("content", "Initial content for the page (optional)", false)
             .build(),
-        
         ToolBuilder::new("update_block")
-            .description("Update the content of an existing block")
+            .description("Replace the content of an existing block")
             .string_param("uuid", "UUID of the block to update", true)
             .string_param("content", "New content for the block", true)
             .build(),
-        
-        // Insert block tool has complex positioning logic
         ToolBuilder::new("insert_block")
-            .description("Insert a new block with precise positioning control")
+            .description("Insert a new block as a child or sibling of an existing block")
             .string_param("parent_uuid", "UUID of the parent block or page", true)
             .string_param("content", "Content for the new block", true)
-            .bool_param("sibling", "Whether to insert as sibling (true) or child (false)", Some(false), false)
+            .bool_param(
+                "sibling",
+                "Insert as sibling (true) or child (false, default)",
+                Some(false),
+                false,
+            )
             .build(),
-        
         single_string_param_tool(
             "delete_block",
-            "Delete a block by its UUID",
+            "Permanently delete a block and all its children by UUID",
             "uuid",
-            "UUID of the block to delete"
+            "UUID of the block to delete",
         ),
-        
+        single_string_param_tool(
+            "delete_page",
+            "Permanently delete a page and all its blocks by name",
+            "page_name",
+            "Name of the page to delete",
+        ),
         ToolBuilder::new("append_to_page")
-            .description("Append a block to the end of a page")
+            .description("Append a new block to the end of a page")
             .string_param("page_name", "Name of the page to append to", true)
             .string_param("content", "Content to append", true)
+            .build(),
+        single_string_param_tool(
+            "append_to_journal",
+            "Append a block to today's journal page",
+            "content",
+            "Content to append to today's journal",
+        ),
+        ToolBuilder::new("set_block_property")
+            .description("Set a property (key-value pair) on a block, e.g. type, priority, tags")
+            .string_param("uuid", "UUID of the block", true)
+            .string_param(
+                "key",
+                "Property name (e.g. 'type', 'priority', 'tags')",
+                true,
+            )
+            .string_param("value", "Property value", true)
+            .build(),
+        ToolBuilder::new("remove_block_property")
+            .description("Remove a property from a block")
+            .string_param("uuid", "UUID of the block", true)
+            .string_param("key", "Property name to remove", true)
             .build(),
     ]
 }

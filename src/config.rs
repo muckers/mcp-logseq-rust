@@ -54,15 +54,15 @@ impl Config {
     /// required for API authentication.
     pub fn from_env() -> Result<Self> {
         // Load .env file if present (ignore if it doesn't exist)
-        dotenv::dotenv().ok();
-        
+        dotenvy::dotenv().ok();
+
         let logseq_api_token = std::env::var("LOGSEQ_API_TOKEN")
             .map_err(|_| anyhow::anyhow!("LOGSEQ_API_TOKEN not set"))?;
-        
+
         // Default to standard Logseq HTTP API port on localhost
         let logseq_api_url = std::env::var("LOGSEQ_API_URL")
             .unwrap_or_else(|_| "http://localhost:12315".to_string());
-        
+
         Ok(Config {
             logseq_api_token,
             logseq_api_url,

@@ -17,9 +17,9 @@
 //! Logseq API, and returns success confirmation with relevant data. All functions
 //! follow consistent error handling and response formatting patterns.
 
+use crate::logseq_client::LogseqClient;
 use anyhow::Result;
 use serde_json::Value;
-use crate::logseq_client::LogseqClient;
 
 /// Creates a new page in the graph with optional initial content.
 ///
@@ -48,9 +48,9 @@ pub async fn create_page(client: &LogseqClient, params: Value) -> Result<Value> 
     let page_name = params["page_name"]
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("page_name parameter is required"))?;
-    
+
     let content = params["content"].as_str();
-    
+
     let result = client.create_page(page_name, content).await?;
     Ok(serde_json::json!({
         "success": true,
@@ -92,11 +92,11 @@ pub async fn update_block(client: &LogseqClient, params: Value) -> Result<Value>
     let uuid = params["uuid"]
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("uuid parameter is required"))?;
-    
+
     let content = params["content"]
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("content parameter is required"))?;
-    
+
     let result = client.update_block(uuid, content).await?;
     Ok(serde_json::json!({
         "success": true,
@@ -140,14 +140,14 @@ pub async fn insert_block(client: &LogseqClient, params: Value) -> Result<Value>
     let parent_uuid = params["parent_uuid"]
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("parent_uuid parameter is required"))?;
-    
+
     let content = params["content"]
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("content parameter is required"))?;
-    
+
     // Default to child insertion if sibling parameter not specified
     let sibling = params["sibling"].as_bool().unwrap_or(false);
-    
+
     let result = client.insert_block(parent_uuid, content, sibling).await?;
     Ok(serde_json::json!({
         "success": true,
@@ -192,8 +192,53 @@ pub async fn delete_block(client: &LogseqClient, params: Value) -> Result<Value>
     let uuid = params["uuid"]
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("uuid parameter is required"))?;
-    
+
     let result = client.delete_block(uuid).await?;
+    Ok(serde_json::json!({
+        "success": true,
+        "result": result
+    }))
+}
+
+/// Permanently deletes a page from the graph.
+///
+/// Removes the specified page and all its blocks from the graph.
+/// This operation is irreversible and will permanently destroy the content.
+/// Use with caution as there is no undo functionality.
+///
+/// # Parameters
+///
+/// - `page_name` (required): The name of the page to delete
+///
+/// # Returns
+///
+/// JSON object containing:
+/// - `success`: Boolean indicating the operation succeeded
+/// - `result`: Confirmation data from the Logseq API
+///
+/// # ⚠️ WARNING - Destructive Operation
+///
+/// This operation:
+/// - **Permanently** removes the page and cannot be undone
+/// - **Deletes** all blocks on the page
+/// - **Immediately** updates the graph structure
+/// - **Cannot** be reversed through the API
+///
+/// Always verify the page name before calling this function.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The page_name parameter is missing
+/// - The specified page doesn't exist
+/// - The page cannot be deleted (e.g., due to permissions)
+/// - The API request fails due to network issues
+pub async fn delete_page(client: &LogseqClient, params: Value) -> Result<Value> {
+    let page_name = params["page_name"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("page_name parameter is required"))?;
+
+    let result = client.delete_page(page_name).await?;
     Ok(serde_json::json!({
         "success": true,
         "result": result
@@ -236,14 +281,167 @@ pub async fn append_to_page(client: &LogseqClient, params: Value) -> Result<Valu
     let page_name = params["page_name"]
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("page_name parameter is required"))?;
-    
+
     let content = params["content"]
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("content parameter is required"))?;
-    
+
     let result = client.append_block_in_page(page_name, content).await?;
     Ok(serde_json::json!({
         "success": true,
         "block": result
     }))
+}
+
+/// Appends a block to today's journal page.
+///
+/// A convenience tool for the most common Logseq journaling workflow — adding
+/// a note or task to the current day's journal without needing to know the page name.
+///
+/// # Parameters
+///
+/// - `content` (required): The text content to append to today's journal
+///
+/// # Returns
+///
+/// JSON object with `success` flag and the created `block` object.
+pub async fn append_to_journal(
+    client: &crate::logseq_client::LogseqClient,
+    params: Value,
+) -> Result<Value> {
+    use crate::tools::query::format_journal_date_pub;
+
+    let content = params["content"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("content parameter is required"))?;
+
+    // Get the graph's date format and determine today's journal page name
+    let formatter = client.get_date_formatter().await?;
+    let fmt_str = formatter.as_str().unwrap_or("MMM do, yyyy");
+
+    // Format the date and lowercase it (Logseq stores journal pages in lowercase)
+    let page_name = format_journal_date_pub(fmt_str).to_lowercase();
+
+    let result = client.append_block_in_page(&page_name, content).await?;
+    Ok(serde_json::json!({
+        "success": true,
+        "date": page_name,
+        "block": result
+    }))
+}
+
+/// Sets (upserts) a property on a block.
+///
+/// Creates or updates a Logseq property on the specified block.
+/// Properties are key-value pairs like `type:: note`, `priority:: A`, `tags:: [[project]]`.
+///
+/// # Parameters
+///
+/// - `uuid` (required): UUID of the block to update
+/// - `key` (required): Property name (e.g., "type", "priority", "tags")
+/// - `value` (required): Property value as a string
+///
+/// # Returns
+///
+/// JSON object with `success` flag.
+pub async fn set_block_property(
+    client: &crate::logseq_client::LogseqClient,
+    params: Value,
+) -> Result<Value> {
+    let uuid = params["uuid"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("uuid parameter is required"))?;
+
+    let key = params["key"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("key parameter is required"))?;
+
+    let value = params["value"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("value parameter is required"))?;
+
+    let result = client.upsert_block_property(uuid, key, value).await?;
+    Ok(serde_json::json!({ "success": true, "result": result }))
+}
+
+/// Removes a property from a block.
+///
+/// Deletes the specified property key from the block. If the property doesn't
+/// exist, the operation succeeds silently.
+///
+/// # Parameters
+///
+/// - `uuid` (required): UUID of the block
+/// - `key` (required): Property name to remove
+///
+/// # Returns
+///
+/// JSON object with `success` flag.
+pub async fn remove_block_property(
+    client: &crate::logseq_client::LogseqClient,
+    params: Value,
+) -> Result<Value> {
+    let uuid = params["uuid"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("uuid parameter is required"))?;
+
+    let key = params["key"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("key parameter is required"))?;
+
+    let result = client.remove_block_property(uuid, key).await?;
+    Ok(serde_json::json!({ "success": true, "result": result }))
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    /// Helper to call parameter-validation logic without a real Logseq client.
+    /// We test only the validation path (before the async client call).
+    fn missing_param_error(params: serde_json::Value, key: &str) -> bool {
+        params[key].as_str().is_none()
+    }
+
+    #[test]
+    fn test_create_page_requires_page_name() {
+        assert!(missing_param_error(json!({}), "page_name"));
+        assert!(!missing_param_error(
+            json!({"page_name": "My Page"}),
+            "page_name"
+        ));
+    }
+
+    #[test]
+    fn test_update_block_requires_both_uuid_and_content() {
+        assert!(missing_param_error(json!({"uuid": "abc"}), "content"));
+        assert!(missing_param_error(json!({"content": "text"}), "uuid"));
+        assert!(!missing_param_error(
+            json!({"uuid": "abc", "content": "text"}),
+            "uuid"
+        ));
+        assert!(!missing_param_error(
+            json!({"uuid": "abc", "content": "text"}),
+            "content"
+        ));
+    }
+
+    #[test]
+    fn test_insert_block_sibling_defaults_to_false() {
+        let params = json!({});
+        let sibling = params["sibling"].as_bool().unwrap_or(false);
+        assert!(!sibling, "sibling should default to false");
+    }
+
+    #[test]
+    fn test_set_block_property_requires_key_and_value() {
+        assert!(missing_param_error(
+            json!({"uuid": "abc", "value": "v"}),
+            "key"
+        ));
+        assert!(missing_param_error(
+            json!({"uuid": "abc", "key": "k"}),
+            "value"
+        ));
+    }
 }

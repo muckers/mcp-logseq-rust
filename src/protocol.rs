@@ -9,7 +9,7 @@ pub use response::HandlerResponse;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 /// JSON-RPC 2.0 Request structure
 #[derive(Debug, Deserialize, Clone)]
@@ -79,57 +79,14 @@ impl ResponseBuilder {
         }
     }
 
-    /// Creates an error response with additional data
-    #[allow(dead_code)]
-    pub fn error_with_data(id: Value, code: i32, message: String, data: Value) -> JsonRpcResponse {
-        JsonRpcResponse {
-            jsonrpc: "2.0".to_string(),
-            result: None,
-            error: Some(JsonRpcError {
-                code,
-                message,
-                data: Some(data),
-            }),
-            id,
-        }
-    }
-
-    /// Creates a method not found error
-    #[allow(dead_code)]
-    pub fn method_not_found(id: Value, method: &str) -> JsonRpcResponse {
-        Self::error(
-            id,
-            error_codes::METHOD_NOT_FOUND,
-            format!("Method '{}' not found", method),
-        )
-    }
-
-    /// Creates an internal error response
-    #[allow(dead_code)]
-    pub fn internal_error(id: Value, message: String) -> JsonRpcResponse {
-        Self::error(id, error_codes::INTERNAL_ERROR, message)
-    }
-
-    /// Creates an invalid params error
-    #[allow(dead_code)]
-    pub fn invalid_params(id: Value, message: String) -> JsonRpcResponse {
-        Self::error(id, error_codes::INVALID_PARAMS, message)
-    }
-
-    /// Creates a parse error response
+    /// Creates a parse error response (id unknown, use 0 per spec)
     pub fn parse_error() -> JsonRpcResponse {
+        use serde_json::json;
         Self::error(
             json!(0),
             error_codes::PARSE_ERROR,
             "Parse error".to_string(),
         )
-    }
-
-    /// Creates a notification acknowledgment (for internal use)
-    /// This returns a special marker that indicates no response should be sent
-    #[allow(dead_code)]
-    pub fn notification_ack() -> Value {
-        json!({"_skip_response": true})
     }
 }
 
@@ -139,21 +96,78 @@ pub fn parse_request(input: &str) -> Result<JsonRpcRequest> {
         .map_err(|e| anyhow::anyhow!("Failed to parse JSON-RPC request: {}", e))
 }
 
-/// Serializes a JSON-RPC response to a string
-#[allow(dead_code)]
-pub fn serialize_response(response: &JsonRpcResponse) -> Result<String> {
-    serde_json::to_string(response)
-        .map_err(|e| anyhow::anyhow!("Failed to serialize response: {}", e))
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
 
-/// Checks if a request is a notification (no ID means notification)
-#[allow(dead_code)]
-pub fn is_notification(request: &JsonRpcRequest) -> bool {
-    request.id.is_none()
-}
+    // --- parse_request tests ---
 
-/// Ensures we have a valid ID for responses (never null per JSON-RPC spec)
-#[allow(dead_code)]
-pub fn ensure_valid_id(id: Option<Value>) -> Value {
-    id.unwrap_or(json!(0))
+    #[test]
+    fn test_parse_valid_request_with_id() {
+        let input = r#"{"jsonrpc":"2.0","method":"tools/list","id":1}"#;
+        let req = parse_request(input).unwrap();
+        assert_eq!(req.method, "tools/list");
+        assert_eq!(req.id, Some(json!(1)));
+    }
+
+    #[test]
+    fn test_parse_notification_has_no_id() {
+        let input = r#"{"jsonrpc":"2.0","method":"initialized"}"#;
+        let req = parse_request(input).unwrap();
+        assert_eq!(req.method, "initialized");
+        assert!(req.id.is_none(), "Notification must have no id");
+    }
+
+    #[test]
+    fn test_parse_invalid_json_returns_error() {
+        let result = parse_request("not json at all");
+        assert!(result.is_err());
+    }
+
+    // --- ResponseBuilder tests ---
+
+    #[test]
+    fn test_success_response_structure() {
+        let resp = ResponseBuilder::success(json!(42), json!({"key": "value"}));
+        assert_eq!(resp.jsonrpc, "2.0");
+        assert_eq!(resp.id, json!(42));
+        assert!(resp.result.is_some());
+        assert!(resp.error.is_none());
+    }
+
+    #[test]
+    fn test_error_response_has_correct_code() {
+        let resp =
+            ResponseBuilder::error(json!(1), error_codes::METHOD_NOT_FOUND, "Not found".into());
+        assert!(resp.result.is_none());
+        let err = resp.error.unwrap();
+        assert_eq!(err.code, -32601);
+    }
+
+    #[test]
+    fn test_parse_error_uses_id_zero() {
+        let resp = ResponseBuilder::parse_error();
+        assert_eq!(resp.id, json!(0));
+        assert_eq!(resp.error.unwrap().code, error_codes::PARSE_ERROR);
+    }
+
+    // --- HandlerResponse notification detection ---
+
+    #[test]
+    fn test_notification_ack_is_detected() {
+        let ack = HandlerResponse::notification_ack();
+        assert!(ack.is_notification_ack());
+    }
+
+    #[test]
+    fn test_success_response_is_not_notification_ack() {
+        let resp = HandlerResponse::success(json!(1), json!({}));
+        assert!(!resp.is_notification_ack());
+    }
+
+    // TODO(human): Add 2-4 more test cases covering edge cases you think are important.
+    // Consider: string ids ("abc"), explicit null id, requests with params object,
+    // malformed-but-valid JSON (missing method field), or additional error codes.
+    // Pattern: #[test] fn test_your_case() { ... }
 }

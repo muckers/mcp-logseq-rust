@@ -21,10 +21,14 @@
 //! The client checks for API-level errors in responses and converts them
 //! to Result errors for consistent error handling throughout the application.
 
-use anyhow::Result;
-use reqwest::{Client, header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE}};
-use serde_json::Value;
 use crate::{config::Config, models::LogseqApiRequest};
+use anyhow::Result;
+use reqwest::{
+    Client,
+    header::{AUTHORIZATION, HeaderMap, HeaderValue},
+};
+use serde_json::Value;
+use std::time::Duration;
 
 /// HTTP client for interacting with the Logseq API.
 ///
@@ -50,7 +54,15 @@ impl LogseqClient {
     /// A configured client ready to make API requests, or an error if
     /// the HTTP client cannot be created.
     pub fn new(config: Config) -> Result<Self> {
-        let client = Client::new();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            AUTHORIZATION,
+            HeaderValue::from_str(&format!("Bearer {}", config.logseq_api_token))?,
+        );
+        let client = Client::builder()
+            .default_headers(headers)
+            .timeout(Duration::from_secs(10))
+            .build()?;
         Ok(Self { client, config })
     }
 
@@ -79,33 +91,26 @@ impl LogseqClient {
     /// - JSON parsing errors are propagated as-is  
     /// - API-level errors (in response.error) are converted to anyhow errors
     async fn call_api(&self, method: &str, args: Vec<Value>) -> Result<Value> {
-        let mut headers = HeaderMap::new();
-        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        headers.insert(
-            AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", self.config.logseq_api_token))?,
-        );
-
         let request = LogseqApiRequest {
             method: method.to_string(),
             args,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/api", self.config.logseq_api_url))
-            .headers(headers)
             .json(&request)
             .send()
             .await?;
 
         // The Logseq API returns the result directly, not wrapped in an object
         let result: Value = response.json().await?;
-        
+
         // Check if it's an error response from the Logseq API
         if let Some(error) = result.get("error") {
             anyhow::bail!("Logseq API error: {}", error);
         }
-        
+
         Ok(result)
     }
 
@@ -143,7 +148,11 @@ impl LogseqClient {
     /// Page object containing metadata and properties, or an error if
     /// the page doesn't exist or cannot be accessed.
     pub async fn get_page(&self, page_name: &str) -> Result<Value> {
-        self.call_api("logseq.Editor.getPage", vec![Value::String(page_name.to_string())]).await
+        self.call_api(
+            "logseq.Editor.getPage",
+            vec![Value::String(page_name.to_string())],
+        )
+        .await
     }
 
     /// Gets the complete block tree structure for a page.
@@ -156,7 +165,11 @@ impl LogseqClient {
     ///
     /// * `page_name` - The name of the page whose blocks to retrieve
     pub async fn get_page_blocks_tree(&self, page_name: &str) -> Result<Value> {
-        self.call_api("logseq.Editor.getPageBlocksTree", vec![Value::String(page_name.to_string())]).await
+        self.call_api(
+            "logseq.Editor.getPageBlocksTree",
+            vec![Value::String(page_name.to_string())],
+        )
+        .await
     }
 
     /// Retrieves a specific block by its unique identifier.
@@ -170,7 +183,11 @@ impl LogseqClient {
     /// Block object containing content, properties, parent/child relationships,
     /// and other block metadata.
     pub async fn get_block(&self, uuid: &str) -> Result<Value> {
-        self.call_api("logseq.Editor.getBlock", vec![Value::String(uuid.to_string())]).await
+        self.call_api(
+            "logseq.Editor.getBlock",
+            vec![Value::String(uuid.to_string())],
+        )
+        .await
     }
 
     /// Searches across all content in the current graph.
@@ -188,11 +205,12 @@ impl LogseqClient {
     /// Array of search results with matching blocks and pages, ranked
     /// by relevance according to Logseq's search algorithm.
     pub async fn search(&self, query: &str) -> Result<Value> {
-        self.call_api("logseq.App.search", vec![Value::String(query.to_string())]).await
+        self.call_api("logseq.App.search", vec![Value::String(query.to_string())])
+            .await
     }
 
     // =============================================================================
-    // Mutation Operations 
+    // Mutation Operations
     // =============================================================================
     // These methods modify content in Logseq (create, update, delete)
 
@@ -239,15 +257,21 @@ impl LogseqClient {
     ///
     /// - `sibling: true` - Insert at the same level as the parent block
     /// - `sibling: false` - Insert as a child of the parent block
-    pub async fn insert_block(&self, parent_uuid: &str, content: &str, sibling: bool) -> Result<Value> {
+    pub async fn insert_block(
+        &self,
+        parent_uuid: &str,
+        content: &str,
+        sibling: bool,
+    ) -> Result<Value> {
         self.call_api(
             "logseq.Editor.insertBlock",
             vec![
                 Value::String(parent_uuid.to_string()),
                 Value::String(content.to_string()),
-                serde_json::json!({ "sibling": sibling })
-            ]
-        ).await
+                serde_json::json!({ "sibling": sibling }),
+            ],
+        )
+        .await
     }
 
     /// Updates the content of an existing block.
@@ -272,9 +296,10 @@ impl LogseqClient {
             "logseq.Editor.updateBlock",
             vec![
                 Value::String(uuid.to_string()),
-                Value::String(content.to_string())
-            ]
-        ).await
+                Value::String(content.to_string()),
+            ],
+        )
+        .await
     }
 
     /// Deletes a block from the graph.
@@ -293,7 +318,34 @@ impl LogseqClient {
     /// This operation is irreversible. The block and all its child blocks
     /// will be permanently removed from the graph.
     pub async fn delete_block(&self, uuid: &str) -> Result<Value> {
-        self.call_api("logseq.Editor.removeBlock", vec![Value::String(uuid.to_string())]).await
+        self.call_api(
+            "logseq.Editor.removeBlock",
+            vec![Value::String(uuid.to_string())],
+        )
+        .await
+    }
+
+    /// Deletes a page from the graph.
+    ///
+    /// # Arguments
+    ///
+    /// * `page_name` - The name of the page to delete
+    ///
+    /// # Returns
+    ///
+    /// Success confirmation, or an error if the page doesn't exist
+    /// or cannot be deleted.
+    ///
+    /// # Warning
+    ///
+    /// This operation is irreversible. The page and all its blocks
+    /// will be permanently removed from the graph.
+    pub async fn delete_page(&self, page_name: &str) -> Result<Value> {
+        self.call_api(
+            "logseq.Editor.deletePage",
+            vec![Value::String(page_name.to_string())],
+        )
+        .await
     }
 
     /// Appends a new block to the end of a page.
@@ -317,8 +369,79 @@ impl LogseqClient {
             "logseq.Editor.appendBlockInPage",
             vec![
                 Value::String(page_name.to_string()),
-                Value::String(content.to_string())
-            ]
-        ).await
+                Value::String(content.to_string()),
+            ],
+        )
+        .await
+    }
+
+    // =============================================================================
+    // New API Methods
+    // =============================================================================
+
+    /// Runs a Datascript/Datalog query against the graph database.
+    ///
+    /// Logseq is built on Datascript, and this exposes its full query engine.
+    /// Queries use Datalog syntax, e.g.:
+    /// `[:find ?n :where [?b :block/name ?n]]` — finds all page names.
+    pub async fn datascript_query(&self, query: &str) -> Result<Value> {
+        self.call_api(
+            "logseq.DB.datascriptQuery",
+            vec![Value::String(query.to_string())],
+        )
+        .await
+    }
+
+    /// Gets the graph's configured date formatter string.
+    ///
+    /// Used to determine the correct page name for journal pages.
+    /// Returns a format string like "MMM do, yyyy" or "yyyy-MM-dd".
+    pub async fn get_date_formatter(&self) -> Result<Value> {
+        let config = self.call_api("logseq.App.getUserConfigs", vec![]).await?;
+        // Extract the preferredDateFormat field from the config
+        Ok(config["preferredDateFormat"].clone())
+    }
+
+    /// Gets all properties for a specific block.
+    pub async fn get_block_properties(&self, uuid: &str) -> Result<Value> {
+        self.call_api(
+            "logseq.Editor.getBlockProperties",
+            vec![Value::String(uuid.to_string())],
+        )
+        .await
+    }
+
+    /// Sets (upserts) a property on a block.
+    pub async fn upsert_block_property(&self, uuid: &str, key: &str, value: &str) -> Result<Value> {
+        self.call_api(
+            "logseq.Editor.upsertBlockProperty",
+            vec![
+                Value::String(uuid.to_string()),
+                Value::String(key.to_string()),
+                Value::String(value.to_string()),
+            ],
+        )
+        .await
+    }
+
+    /// Removes a property from a block.
+    pub async fn remove_block_property(&self, uuid: &str, key: &str) -> Result<Value> {
+        self.call_api(
+            "logseq.Editor.removeBlockProperty",
+            vec![
+                Value::String(uuid.to_string()),
+                Value::String(key.to_string()),
+            ],
+        )
+        .await
+    }
+
+    /// Gets all blocks that link to the given page (backlinks).
+    pub async fn get_page_linked_references(&self, page_name: &str) -> Result<Value> {
+        self.call_api(
+            "logseq.Editor.getPageLinkedReferences",
+            vec![Value::String(page_name.to_string())],
+        )
+        .await
     }
 }
