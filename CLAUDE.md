@@ -53,7 +53,8 @@ The server follows a modular architecture with clear separation of concerns:
 2. **config.rs**: Environment-based configuration
    - Loads from `.env` file or environment variables
    - Required: `LOGSEQ_API_TOKEN`
-   - Optional: `LOGSEQ_API_URL` (defaults to http://localhost:12315)
+   - Optional: `LOGSEQ_API_URL` (defaults to http://localhost:12315; trailing slash trimmed)
+   - Optional: `LOGSEQ_API_TIMEOUT_SECS` (defaults to 10)
 
 3. **logseq_client.rs**: HTTP client wrapper for Logseq API
    - Handles authentication via Bearer token
@@ -66,28 +67,29 @@ The server follows a modular architecture with clear separation of concerns:
    - Protocol-specific logic separated from business logic
 
 5. **models.rs**: Data structures for API communication
-   - Logseq API request/response models
-   - Entity models (Page, Block, Graph)
+   - Logseq API request model (`LogseqApiRequest`)
    - JSON serialization/deserialization
 
-6. **error.rs**: Custom error types for the application
-
-7. **tools/** module: MCP tool implementations
+6. **tools/** module: MCP tool implementations
    - **mod.rs**: Tool definitions using builder pattern
    - **builder.rs**: Helper utilities for defining tool schemas
-   - **query.rs**: Read operations (list_graphs, list_pages, get_page, get_block, search)
-   - **mutate.rs**: Write operations (create_page, update_block, insert_block, delete_block, append_to_page)
+   - **query.rs**: Read operations (list_graphs, list_pages, get_page, get_block, search, query, get_today_journal, get_page_references, get_block_properties)
+   - **mutate.rs**: Write operations (create_page, update_block, insert_block, delete_block, delete_page, append_to_page, append_to_journal, set_block_property, remove_block_property)
 
 ### Communication Flow
 
 1. MCP client sends JSON-RPC 2.0 request via stdin (one request per line)
-2. Server parses request in `run_mcp_server` loop (main.rs:84)
-3. Request is dispatched to `handle_request` which routes to appropriate handler (main.rs:149)
+2. Server parses request in the `run_mcp_server` loop
+3. Request is dispatched to `handle_request`, which routes to the appropriate handler
 4. MCP protocol methods (initialize, tools/list, tools/call, etc.) are handled
 5. For tool execution, request is routed to appropriate tool handler in query.rs or mutate.rs
 6. Tool handler calls LogseqClient to interact with Logseq API via HTTP
 7. Response is serialized and sent back via stdout
 8. Debug/error logging goes to stderr to avoid polluting JSON-RPC stream
+
+Note: tool *execution* failures are returned as a normal result with `isError: true`
+(per the MCP spec), while protocol-level problems (unknown method, missing/invalid
+params, unknown tool) are returned as JSON-RPC errors.
 
 ### MCP Protocol Methods
 
@@ -124,7 +126,7 @@ To add a new tool to the MCP server:
    pub async fn tool_name(client: &Arc<LogseqClient>, params: Value) -> Result<Value>
    ```
 
-3. Add the dispatch case in `main.rs` in the `handle_tool_call` function (main.rs:330)
+3. Add the dispatch case in `main.rs` in the `handle_tool_call` function
 
 4. If needed, add new methods to LogseqClient in `logseq_client.rs`
 
@@ -143,6 +145,8 @@ Create a `.env` file in the project root:
 ```env
 LOGSEQ_API_TOKEN=your-actual-token-here
 LOGSEQ_API_URL=http://localhost:12315
+# Optional: request timeout in seconds (default: 10)
+LOGSEQ_API_TIMEOUT_SECS=10
 ```
 
 The `.env` file is gitignored by default for security.

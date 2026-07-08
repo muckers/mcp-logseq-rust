@@ -6,17 +6,25 @@ A Rust implementation of an MCP (Model Context Protocol) server for Logseq, enab
 
 ### Query Operations
 - **list_graphs**: List available Logseq graphs
-- **list_pages**: List all pages in the current graph
+- **list_pages**: List pages in the current graph (optional name filter and limit)
 - **get_page**: Retrieve content of a specific page by name
 - **get_block**: Get a specific block by its UUID
-- **search**: Search across all pages in the graph
+- **search**: Full-text search across all pages and blocks in the graph
+- **query**: Run a Datascript/Datalog query against the graph database
+- **get_today_journal**: Get the content of today's journal page
+- **get_page_references**: Get all blocks that link to a page (backlinks)
+- **get_block_properties**: Get all properties on a specific block
 
 ### Write Operations
 - **create_page**: Create a new page with optional content
 - **update_block**: Update the content of an existing block
 - **insert_block**: Insert a new block as child or sibling
 - **delete_block**: Delete a block by its UUID
+- **delete_page**: Delete a page and all its blocks by name
 - **append_to_page**: Append content to the end of a page
+- **append_to_journal**: Append a block to today's journal page
+- **set_block_property**: Set a property (key-value pair) on a block
+- **remove_block_property**: Remove a property from a block
 
 ## Prerequisites
 
@@ -47,6 +55,8 @@ A Rust implementation of an MCP (Model Context Protocol) server for Logseq, enab
    ```env
    LOGSEQ_API_TOKEN=your-actual-token-here
    LOGSEQ_API_URL=http://localhost:12315
+   # Optional: request timeout in seconds (default: 10)
+   LOGSEQ_API_TIMEOUT_SECS=10
    ```
 
 4. Build the project:
