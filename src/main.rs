@@ -39,6 +39,9 @@ use crate::{
     tools::{mutate, query},
 };
 
+/// The MCP protocol version this server implements and advertises during `initialize`.
+const MCP_PROTOCOL_VERSION: &str = "2025-11-25";
+
 /// Main entry point for the MCP Logseq server.
 ///
 /// Sets up logging, loads configuration from environment variables,
@@ -190,20 +193,20 @@ async fn handle_request(request: JsonRpcRequest, client: &Arc<LogseqClient>) -> 
 /// ## Response Format
 ///
 /// Returns server info including:
-/// - Protocol version (2024-11-05)
+/// - Protocol version (see `MCP_PROTOCOL_VERSION`)
 /// - Server capabilities (tools support)
-/// - Server name and version
+/// - Server name and version (sourced from Cargo package metadata)
 ///
 /// Note: Tools are NOT included here per MCP spec - they're returned via tools/list
 fn handle_initialize(id: Value) -> HandlerResponse {
     let result = json!({
-        "protocolVersion": "2024-11-05",
+        "protocolVersion": MCP_PROTOCOL_VERSION,
         "capabilities": {
             "tools": {}
         },
         "serverInfo": {
-            "name": "mcp-logseq-rust",
-            "version": "1.0.0"
+            "name": env!("CARGO_PKG_NAME"),
+            "version": env!("CARGO_PKG_VERSION")
         }
     });
 
@@ -351,7 +354,13 @@ async fn handle_tool_call(
         "append_to_journal" => mutate::append_to_journal(client, tool_params.clone()).await,
         "set_block_property" => mutate::set_block_property(client, tool_params.clone()).await,
         "remove_block_property" => mutate::remove_block_property(client, tool_params.clone()).await,
-        _ => Err(anyhow::anyhow!("Unknown tool: {}", tool_name)),
+        _ => {
+            return HandlerResponse::error(
+                id,
+                error_codes::METHOD_NOT_FOUND,
+                format!("Unknown tool: {}", tool_name),
+            );
+        }
     };
 
     // Format the response according to MCP protocol
@@ -377,10 +386,18 @@ async fn handle_tool_call(
                 }),
             )
         }
-        Err(e) => HandlerResponse::error(
+        // Per the MCP spec, tool *execution* failures are reported as a normal
+        // result with `isError: true` so the model can see and recover from them.
+        // Protocol-level problems (missing params, unknown tool) remain JSON-RPC errors.
+        Err(e) => HandlerResponse::success(
             id,
-            error_codes::INTERNAL_ERROR,
-            format!("Tool execution failed: {}", e),
+            json!({
+                "content": [{
+                    "type": "text",
+                    "text": format!("Tool execution failed: {}", e)
+                }],
+                "isError": true
+            }),
         ),
     }
 }
