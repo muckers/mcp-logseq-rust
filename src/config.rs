@@ -23,12 +23,17 @@ use serde::Deserialize;
 /// Contains all the settings needed to connect to and authenticate with
 /// a Logseq instance via its HTTP API. Configuration values are loaded
 /// from environment variables during server startup.
+/// Default request timeout (seconds) for calls to the Logseq HTTP API.
+const DEFAULT_TIMEOUT_SECS: u64 = 10;
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
     /// Bearer token for authenticating with the Logseq HTTP API
     pub logseq_api_token: String,
-    /// Base URL for the Logseq HTTP API endpoint
+    /// Base URL for the Logseq HTTP API endpoint (no trailing slash)
     pub logseq_api_url: String,
+    /// Request timeout, in seconds, for API calls
+    pub timeout_secs: u64,
 }
 
 impl Config {
@@ -59,13 +64,24 @@ impl Config {
         let logseq_api_token = std::env::var("LOGSEQ_API_TOKEN")
             .map_err(|_| anyhow::anyhow!("LOGSEQ_API_TOKEN not set"))?;
 
-        // Default to standard Logseq HTTP API port on localhost
+        // Default to standard Logseq HTTP API port on localhost.
+        // Trim any trailing slash so building "{url}/api" never double-slashes.
         let logseq_api_url = std::env::var("LOGSEQ_API_URL")
-            .unwrap_or_else(|_| "http://localhost:12315".to_string());
+            .unwrap_or_else(|_| "http://localhost:12315".to_string())
+            .trim_end_matches('/')
+            .to_string();
+
+        // Optional timeout override; fall back to the default on missing/invalid values.
+        let timeout_secs = std::env::var("LOGSEQ_API_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .filter(|&v| v > 0)
+            .unwrap_or(DEFAULT_TIMEOUT_SECS);
 
         Ok(Config {
             logseq_api_token,
             logseq_api_url,
+            timeout_secs,
         })
     }
 }

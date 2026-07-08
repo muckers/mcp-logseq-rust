@@ -61,7 +61,7 @@ impl LogseqClient {
         );
         let client = Client::builder()
             .default_headers(headers)
-            .timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(config.timeout_secs))
             .build()?;
         Ok(Self { client, config })
     }
@@ -102,6 +102,23 @@ impl LogseqClient {
             .json(&request)
             .send()
             .await?;
+
+        // Surface HTTP-level failures with clear, actionable messages before
+        // attempting to parse the body as JSON (an error page is not valid JSON).
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            if status == reqwest::StatusCode::UNAUTHORIZED
+                || status == reqwest::StatusCode::FORBIDDEN
+            {
+                anyhow::bail!(
+                    "Logseq API authentication failed ({}). Check that LOGSEQ_API_TOKEN matches the token configured in Logseq. {}",
+                    status,
+                    body
+                );
+            }
+            anyhow::bail!("Logseq API request failed with status {}: {}", status, body);
+        }
 
         // The Logseq API returns the result directly, not wrapped in an object
         let result: Value = response.json().await?;
