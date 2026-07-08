@@ -320,9 +320,12 @@ mod tests {
         assert!(result.contains(','));
         // Should contain an ordinal suffix (st, nd, rd, or th)
         assert!(
-            result.contains("st,") || result.contains("nd,") ||
-            result.contains("rd,") || result.contains("th,"),
-            "Expected ordinal suffix in: {}", result
+            result.contains("st,")
+                || result.contains("nd,")
+                || result.contains("rd,")
+                || result.contains("th,"),
+            "Expected ordinal suffix in: {}",
+            result
         );
     }
 
@@ -353,7 +356,7 @@ fn format_journal_date(logseq_fmt: &str) -> String {
     let now = Local::now();
 
     // Handle ordinal day format "do" specially (1st, 2nd, 3rd, etc.)
-    let result = if logseq_fmt.contains("do") {
+    if logseq_fmt.contains("do") {
         let day = now.day();
         let ordinal = get_ordinal_suffix(day);
         let day_with_ordinal = format!("{}{}", day, ordinal);
@@ -385,9 +388,7 @@ fn format_journal_date(logseq_fmt: &str) -> String {
             .replace("EEEE", "%A");
 
         now.format(&chrono_fmt).to_string()
-    };
-
-    result
+    }
 }
 
 /// Returns the ordinal suffix for a day number (st, nd, rd, th).
