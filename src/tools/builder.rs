@@ -78,6 +78,32 @@ impl ToolBuilder {
         self
     }
 
+    /// Adds an array parameter to the tool.
+    ///
+    /// `item_schema` is the JSON Schema describing each element of the array
+    /// (e.g. `json!({ "type": "object", ... })`).
+    pub fn array_param(
+        mut self,
+        name: impl Into<String>,
+        description: impl Into<String>,
+        item_schema: Value,
+        required: bool,
+    ) -> Self {
+        let param_name = name.into();
+        self.properties.insert(
+            param_name.clone(),
+            json!({
+                "type": "array",
+                "description": description.into(),
+                "items": item_schema
+            }),
+        );
+        if required {
+            self.required.push(param_name);
+        }
+        self
+    }
+
     /// Adds an integer parameter to the tool
     #[allow(dead_code)]
     pub fn int_param(

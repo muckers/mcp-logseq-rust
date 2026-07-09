@@ -287,6 +287,47 @@ pub async fn get_block_properties(client: &LogseqClient, params: Value) -> Resul
     Ok(serde_json::json!({ "properties": props }))
 }
 
+/// Runs a Logseq simple query (the `{{query}}` DSL).
+///
+/// Friendlier than raw Datalog for common lookups like tasks and property
+/// matches, e.g. `(task TODO)` or `(property type book)`.
+///
+/// # Parameters
+///
+/// - `query` (required): Simple query string
+pub async fn simple_query(client: &LogseqClient, params: Value) -> Result<Value> {
+    let q = params["query"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("query parameter is required"))?;
+
+    let results = client.simple_query(q).await?;
+    Ok(serde_json::json!({ "results": results }))
+}
+
+/// Lists the templates defined in the current graph.
+///
+/// # Returns
+///
+/// JSON object mapping template names to their block definitions.
+pub async fn list_templates(client: &LogseqClient, _params: Value) -> Result<Value> {
+    let templates = client.get_current_graph_templates().await?;
+    Ok(serde_json::json!({ "templates": templates }))
+}
+
+/// Gets the page tree under a namespace.
+///
+/// # Parameters
+///
+/// - `namespace` (required): Namespace prefix, e.g. `project`
+pub async fn get_namespace_pages(client: &LogseqClient, params: Value) -> Result<Value> {
+    let namespace = params["namespace"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("namespace parameter is required"))?;
+
+    let pages = client.get_pages_tree_from_namespace(namespace).await?;
+    Ok(serde_json::json!({ "pages": pages }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -326,6 +367,24 @@ mod tests {
                 || result.contains("th,"),
             "Expected ordinal suffix in: {}",
             result
+        );
+    }
+
+    #[test]
+    fn test_simple_query_requires_query_param() {
+        use serde_json::json;
+        assert!(json!({})["query"].as_str().is_none());
+        assert!(json!({"query": "(task TODO)"})["query"].as_str().is_some());
+    }
+
+    #[test]
+    fn test_get_namespace_pages_requires_namespace_param() {
+        use serde_json::json;
+        assert!(json!({})["namespace"].as_str().is_none());
+        assert!(
+            json!({"namespace": "project"})["namespace"]
+                .as_str()
+                .is_some()
         );
     }
 

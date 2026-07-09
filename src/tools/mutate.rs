@@ -393,6 +393,141 @@ pub async fn remove_block_property(
     Ok(serde_json::json!({ "success": true, "result": result }))
 }
 
+/// Renames a page.
+///
+/// # Parameters
+///
+/// - `old_name` (required): Current page name
+/// - `new_name` (required): New page name
+///
+/// # Note
+///
+/// Logseq's HTTP API does not echo the page, so `result` is `null` on success.
+/// `success: true` is the authoritative signal.
+pub async fn rename_page(client: &LogseqClient, params: Value) -> Result<Value> {
+    let old_name = params["old_name"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("old_name parameter is required"))?;
+
+    let new_name = params["new_name"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("new_name parameter is required"))?;
+
+    let result = client.rename_page(old_name, new_name).await?;
+    Ok(serde_json::json!({ "success": true, "result": result }))
+}
+
+/// Moves a block to a new location relative to a target block.
+///
+/// # Parameters
+///
+/// - `src_uuid` (required): UUID of the block to move
+/// - `target_uuid` (required): UUID of the target block
+/// - `before` (optional): Place before (true) or after (false, default) the target
+/// - `children` (optional): Move as first child (true) or sibling (false, default)
+///
+/// # Note
+///
+/// Logseq's HTTP API does not echo the block, so `result` is `null` on success.
+/// `success: true` is the authoritative signal.
+pub async fn move_block(client: &LogseqClient, params: Value) -> Result<Value> {
+    let src_uuid = params["src_uuid"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("src_uuid parameter is required"))?;
+
+    let target_uuid = params["target_uuid"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("target_uuid parameter is required"))?;
+
+    let before = params["before"].as_bool().unwrap_or(false);
+    let children = params["children"].as_bool().unwrap_or(false);
+
+    let result = client
+        .move_block(src_uuid, target_uuid, before, children)
+        .await?;
+    Ok(serde_json::json!({ "success": true, "result": result }))
+}
+
+/// Prepends a new block to the top of a page.
+///
+/// # Parameters
+///
+/// - `page_name` (required): Name of the page to prepend to
+/// - `content` (required): Content to prepend
+pub async fn prepend_to_page(client: &LogseqClient, params: Value) -> Result<Value> {
+    let page_name = params["page_name"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("page_name parameter is required"))?;
+
+    let content = params["content"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("content parameter is required"))?;
+
+    let result = client.prepend_block_in_page(page_name, content).await?;
+    Ok(serde_json::json!({
+        "success": true,
+        "block": result
+    }))
+}
+
+/// Inserts a batch of blocks (a subtree) under a parent block in one call.
+///
+/// # Parameters
+///
+/// - `parent_uuid` (required): UUID of the parent block or page
+/// - `blocks` (required): Array of `{ content, children? }` block objects
+/// - `sibling` (optional): Insert as siblings of the parent (true) or children (false, default)
+///
+/// # Note
+///
+/// Logseq's HTTP API does not echo the created blocks, so `blocks` in the
+/// response is `null` on success. `success: true` is the authoritative signal.
+pub async fn insert_batch_blocks(client: &LogseqClient, params: Value) -> Result<Value> {
+    let parent_uuid = params["parent_uuid"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("parent_uuid parameter is required"))?;
+
+    let blocks = params
+        .get("blocks")
+        .filter(|b| b.is_array())
+        .ok_or_else(|| anyhow::anyhow!("blocks parameter is required and must be an array"))?
+        .clone();
+
+    let sibling = params["sibling"].as_bool().unwrap_or(false);
+
+    let result = client
+        .insert_batch_block(parent_uuid, blocks, sibling)
+        .await?;
+    Ok(serde_json::json!({
+        "success": true,
+        "blocks": result
+    }))
+}
+
+/// Inserts a named template at a target block.
+///
+/// # Parameters
+///
+/// - `target_uuid` (required): UUID of the block to insert the template at
+/// - `template_name` (required): Name of the template to insert
+///
+/// # Note
+///
+/// Logseq's HTTP API does not echo the result, so `result` is `null` on success.
+/// `success: true` is the authoritative signal.
+pub async fn insert_template(client: &LogseqClient, params: Value) -> Result<Value> {
+    let target_uuid = params["target_uuid"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("target_uuid parameter is required"))?;
+
+    let template_name = params["template_name"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("template_name parameter is required"))?;
+
+    let result = client.insert_template(target_uuid, template_name).await?;
+    Ok(serde_json::json!({ "success": true, "result": result }))
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -442,6 +577,55 @@ mod tests {
         assert!(missing_param_error(
             json!({"uuid": "abc", "key": "k"}),
             "value"
+        ));
+    }
+
+    #[test]
+    fn test_rename_page_requires_both_names() {
+        assert!(missing_param_error(json!({"old_name": "a"}), "new_name"));
+        assert!(missing_param_error(json!({"new_name": "b"}), "old_name"));
+        assert!(!missing_param_error(
+            json!({"old_name": "a", "new_name": "b"}),
+            "new_name"
+        ));
+    }
+
+    #[test]
+    fn test_move_block_requires_src_and_target() {
+        assert!(missing_param_error(json!({"src_uuid": "a"}), "target_uuid"));
+        assert!(missing_param_error(json!({"target_uuid": "b"}), "src_uuid"));
+    }
+
+    #[test]
+    fn test_insert_batch_blocks_requires_parent_and_blocks_array() {
+        // parent_uuid must be a string
+        assert!(missing_param_error(
+            json!({"blocks": [{"content": "x"}]}),
+            "parent_uuid"
+        ));
+        // blocks must be present and an array
+        let params = json!({"parent_uuid": "p"});
+        assert!(
+            params.get("blocks").filter(|b| b.is_array()).is_none(),
+            "missing blocks should be rejected"
+        );
+        // a non-array blocks value is rejected
+        let params = json!({"parent_uuid": "p", "blocks": "not-an-array"});
+        assert!(params.get("blocks").filter(|b| b.is_array()).is_none());
+        // a valid array is accepted
+        let params = json!({"parent_uuid": "p", "blocks": [{"content": "x"}]});
+        assert!(params.get("blocks").filter(|b| b.is_array()).is_some());
+    }
+
+    #[test]
+    fn test_insert_template_requires_target_and_name() {
+        assert!(missing_param_error(
+            json!({"target_uuid": "a"}),
+            "template_name"
+        ));
+        assert!(missing_param_error(
+            json!({"template_name": "b"}),
+            "target_uuid"
         ));
     }
 }

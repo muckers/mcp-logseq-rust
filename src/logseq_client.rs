@@ -59,9 +59,14 @@ impl LogseqClient {
             AUTHORIZATION,
             HeaderValue::from_str(&format!("Bearer {}", config.logseq_api_token))?,
         );
+        // Disable all proxies. Logseq's API is always a local endpoint, and
+        // reqwest otherwise auto-detects the OS/system proxy. On managed machines
+        // a corporate proxy (e.g. Netskope) would then intercept even localhost
+        // traffic and hang the request, so we always connect directly.
         let client = Client::builder()
             .default_headers(headers)
             .timeout(Duration::from_secs(config.timeout_secs))
+            .no_proxy()
             .build()?;
         Ok(Self { client, config })
     }
@@ -458,6 +463,113 @@ impl LogseqClient {
         self.call_api(
             "logseq.Editor.getPageLinkedReferences",
             vec![Value::String(page_name.to_string())],
+        )
+        .await
+    }
+
+    // =============================================================================
+    // High-value gap methods
+    // =============================================================================
+
+    /// Runs a Logseq simple query (the `{{query ...}}` DSL, e.g. `(task TODO)`).
+    ///
+    /// This is friendlier than raw Datalog for common lookups like tasks,
+    /// property matches, and page references.
+    pub async fn simple_query(&self, query: &str) -> Result<Value> {
+        self.call_api("logseq.DB.q", vec![Value::String(query.to_string())])
+            .await
+    }
+
+    /// Renames a page, updating references where Logseq supports it.
+    pub async fn rename_page(&self, old_name: &str, new_name: &str) -> Result<Value> {
+        self.call_api(
+            "logseq.Editor.renamePage",
+            vec![
+                Value::String(old_name.to_string()),
+                Value::String(new_name.to_string()),
+            ],
+        )
+        .await
+    }
+
+    /// Moves a block to a new location relative to a target block.
+    ///
+    /// * `before` - place the source before (true) or after (false) the target
+    /// * `children` - move as the first child of the target (true) or as a sibling (false)
+    pub async fn move_block(
+        &self,
+        src_uuid: &str,
+        target_uuid: &str,
+        before: bool,
+        children: bool,
+    ) -> Result<Value> {
+        self.call_api(
+            "logseq.Editor.moveBlock",
+            vec![
+                Value::String(src_uuid.to_string()),
+                Value::String(target_uuid.to_string()),
+                serde_json::json!({ "before": before, "children": children }),
+            ],
+        )
+        .await
+    }
+
+    /// Prepends a new block to the top of a page.
+    pub async fn prepend_block_in_page(&self, page_name: &str, content: &str) -> Result<Value> {
+        self.call_api(
+            "logseq.Editor.prependBlockInPage",
+            vec![
+                Value::String(page_name.to_string()),
+                Value::String(content.to_string()),
+            ],
+        )
+        .await
+    }
+
+    /// Inserts a batch of blocks (a subtree) under a parent block in one call.
+    ///
+    /// `batch` is a JSON array of `{ "content": string, "children"?: [...] }`
+    /// objects, passed through to Logseq's `IBatchBlock` shape.
+    pub async fn insert_batch_block(
+        &self,
+        parent_uuid: &str,
+        batch: Value,
+        sibling: bool,
+    ) -> Result<Value> {
+        self.call_api(
+            "logseq.Editor.insertBatchBlock",
+            vec![
+                Value::String(parent_uuid.to_string()),
+                batch,
+                serde_json::json!({ "sibling": sibling }),
+            ],
+        )
+        .await
+    }
+
+    /// Gets the page tree for a namespace (e.g. all pages under `project/`).
+    pub async fn get_pages_tree_from_namespace(&self, namespace: &str) -> Result<Value> {
+        self.call_api(
+            "logseq.Editor.getPagesTreeFromNamespace",
+            vec![Value::String(namespace.to_string())],
+        )
+        .await
+    }
+
+    /// Lists the templates defined in the current graph.
+    pub async fn get_current_graph_templates(&self) -> Result<Value> {
+        self.call_api("logseq.App.getCurrentGraphTemplates", vec![])
+            .await
+    }
+
+    /// Inserts a named template at a target block.
+    pub async fn insert_template(&self, target_uuid: &str, template_name: &str) -> Result<Value> {
+        self.call_api(
+            "logseq.App.insertTemplate",
+            vec![
+                Value::String(target_uuid.to_string()),
+                Value::String(template_name.to_string()),
+            ],
         )
         .await
     }

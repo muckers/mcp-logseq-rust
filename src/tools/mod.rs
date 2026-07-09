@@ -152,6 +152,22 @@ pub fn get_all_tools() -> Vec<Tool> {
             "uuid",
             "UUID of the block",
         ),
+        single_string_param_tool(
+            "simple_query",
+            "Run a Logseq simple query (the {{query}} DSL) for common lookups like tasks and property matches",
+            "query",
+            "Simple query string, e.g. (task TODO) or (property type book)",
+        ),
+        simple_tool(
+            "list_templates",
+            "List the templates defined in the current graph",
+        ),
+        single_string_param_tool(
+            "get_namespace_pages",
+            "Get the page tree under a namespace (e.g. all pages under 'project/')",
+            "namespace",
+            "Namespace prefix, e.g. 'project'",
+        ),
         // ==========================================================================
         // Mutation Tools - Write operations that modify Logseq content
         // ==========================================================================
@@ -213,6 +229,69 @@ pub fn get_all_tools() -> Vec<Tool> {
             .description("Remove a property from a block")
             .string_param("uuid", "UUID of the block", true)
             .string_param("key", "Property name to remove", true)
+            .build(),
+        ToolBuilder::new("rename_page")
+            .description("Rename a page, updating references where supported. On success returns success:true; Logseq's HTTP API does not echo the page, so a null result is normal and does not indicate failure.")
+            .string_param("old_name", "Current page name", true)
+            .string_param("new_name", "New page name", true)
+            .build(),
+        ToolBuilder::new("move_block")
+            .description("Move a block to a new location relative to a target block. On success returns success:true; Logseq's HTTP API does not echo the block, so a null result is normal and does not indicate failure.")
+            .string_param("src_uuid", "UUID of the block to move", true)
+            .string_param("target_uuid", "UUID of the target block", true)
+            .bool_param(
+                "before",
+                "Place before (true) or after (false, default) the target",
+                Some(false),
+                false,
+            )
+            .bool_param(
+                "children",
+                "Move as first child of the target (true) or as a sibling (false, default)",
+                Some(false),
+                false,
+            )
+            .build(),
+        ToolBuilder::new("prepend_to_page")
+            .description("Prepend a new block to the top of a page")
+            .string_param("page_name", "Name of the page to prepend to", true)
+            .string_param("content", "Content to prepend", true)
+            .build(),
+        ToolBuilder::new("insert_batch_blocks")
+            .description("Insert a batch of blocks (a subtree) under a parent block in one call. On success returns success:true; Logseq's HTTP API does not echo the created blocks, so a null result is normal and does not indicate failure.")
+            .string_param("parent_uuid", "UUID of the parent block or page", true)
+            .array_param(
+                "blocks",
+                "Array of blocks to insert, each { content, children? }",
+                json!({
+                    "type": "object",
+                    "properties": {
+                        "content": { "type": "string", "description": "Block content" },
+                        "children": {
+                            "type": "array",
+                            "description": "Nested child blocks (same shape)",
+                            "items": { "type": "object" }
+                        }
+                    },
+                    "required": ["content"]
+                }),
+                true,
+            )
+            .bool_param(
+                "sibling",
+                "Insert as siblings of the parent (true) or as children (false, default)",
+                Some(false),
+                false,
+            )
+            .build(),
+        ToolBuilder::new("insert_template")
+            .description("Insert a named template at a target block. On success returns success:true; Logseq's HTTP API does not echo the result, so a null result is normal and does not indicate failure.")
+            .string_param(
+                "target_uuid",
+                "UUID of the block to insert the template at",
+                true,
+            )
+            .string_param("template_name", "Name of the template to insert", true)
             .build(),
     ]
 }

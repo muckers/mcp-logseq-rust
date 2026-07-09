@@ -11,20 +11,28 @@ A Rust implementation of an MCP (Model Context Protocol) server for Logseq, enab
 - **get_block**: Get a specific block by its UUID
 - **search**: Full-text search across all pages and blocks in the graph
 - **query**: Run a Datascript/Datalog query against the graph database
+- **simple_query**: Run a Logseq simple query (the `{{query}}` DSL), e.g. `(task TODO)`
 - **get_today_journal**: Get the content of today's journal page
 - **get_page_references**: Get all blocks that link to a page (backlinks)
 - **get_block_properties**: Get all properties on a specific block
+- **list_templates**: List the templates defined in the current graph
+- **get_namespace_pages**: Get the page tree under a namespace
 
 ### Write Operations
 - **create_page**: Create a new page with optional content
 - **update_block**: Update the content of an existing block
 - **insert_block**: Insert a new block as child or sibling
+- **insert_batch_blocks**: Insert a batch of blocks (a subtree) under a parent in one call
 - **delete_block**: Delete a block by its UUID
 - **delete_page**: Delete a page and all its blocks by name
+- **rename_page**: Rename a page
+- **move_block**: Move a block relative to a target block
 - **append_to_page**: Append content to the end of a page
+- **prepend_to_page**: Prepend a block to the top of a page
 - **append_to_journal**: Append a block to today's journal page
 - **set_block_property**: Set a property (key-value pair) on a block
 - **remove_block_property**: Remove a property from a block
+- **insert_template**: Insert a named template at a target block
 
 ## Prerequisites
 
@@ -137,8 +145,12 @@ Once configured, you can interact with your Logseq graph through Claude Desktop 
 ```
 "Can you show me all pages in my Logseq graph?"
 "Search for notes about 'project planning'"
+"Show me all my open TODOs"                      (simple_query)
 "Create a new page called 'Meeting Notes 2024-01-15'"
 "Add a task to my Daily Notes page"
+"Add these five items as a nested outline under this block"   (insert_batch_blocks)
+"Rename the 'Draft' page to 'Q3 Plan'"           (rename_page)
+"What templates do I have?"                       (list_templates)
 ```
 
 ## Development

@@ -73,8 +73,8 @@ The server follows a modular architecture with clear separation of concerns:
 6. **tools/** module: MCP tool implementations
    - **mod.rs**: Tool definitions using builder pattern
    - **builder.rs**: Helper utilities for defining tool schemas
-   - **query.rs**: Read operations (list_graphs, list_pages, get_page, get_block, search, query, get_today_journal, get_page_references, get_block_properties)
-   - **mutate.rs**: Write operations (create_page, update_block, insert_block, delete_block, delete_page, append_to_page, append_to_journal, set_block_property, remove_block_property)
+   - **query.rs**: Read operations (list_graphs, list_pages, get_page, get_block, search, query, simple_query, get_today_journal, get_page_references, get_block_properties, list_templates, get_namespace_pages)
+   - **mutate.rs**: Write operations (create_page, update_block, insert_block, insert_batch_blocks, delete_block, delete_page, rename_page, move_block, append_to_page, prepend_to_page, append_to_journal, set_block_property, remove_block_property, insert_template)
 
 ### Communication Flow
 
@@ -120,6 +120,9 @@ To add a new tool to the MCP server:
        .string_param("param1", "Description", required: bool)
        .build()
    ```
+   Available parameter helpers: `string_param`, `bool_param`, `int_param`, and
+   `array_param` (for array/subtree inputs). For tools with no parameters use the
+   `simple_tool` helper; for a single required string, `single_string_param_tool`.
 
 2. Implement the handler in either `tools/query.rs` (read-only) or `tools/mutate.rs` (write operations):
    ```rust

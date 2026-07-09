@@ -65,15 +65,22 @@ async fn main() -> Result<()> {
 
     tracing::info!("MCP Logseq Server starting...");
 
-    // Verify Logseq is reachable before entering the server loop
-    if let Err(e) = client.get_current_graph().await {
-        eprintln!(
-            "[ERROR] Cannot connect to Logseq: {}. Is Logseq running with HTTP API enabled?",
-            e
-        );
-        std::process::exit(1);
-    }
-    tracing::info!("Connected to Logseq successfully");
+    // Probe Logseq connectivity in the background. This MUST NOT block or kill the
+    // process: an MCP server has to complete the JSON-RPC handshake (initialize,
+    // tools/list) regardless of whether the backend is reachable yet. Blocking here
+    // caused clients (e.g. Claude Desktop) to time out when Logseq wasn't reachable
+    // the instant the server was launched. Connection failures now surface per tool
+    // call as `isError` results instead.
+    let probe = client.clone();
+    tokio::spawn(async move {
+        match probe.get_current_graph().await {
+            Ok(_) => tracing::info!("Connected to Logseq successfully"),
+            Err(e) => tracing::warn!(
+                "Logseq not reachable at startup: {}. Is Logseq running with HTTP API enabled? Tool calls will report errors until it is available.",
+                e
+            ),
+        }
+    });
 
     // Start the MCP server loop
     run_mcp_server(client).await?;
@@ -344,6 +351,9 @@ async fn handle_tool_call(
         "get_today_journal" => query::get_today_journal(client, tool_params.clone()).await,
         "get_page_references" => query::get_page_references(client, tool_params.clone()).await,
         "get_block_properties" => query::get_block_properties(client, tool_params.clone()).await,
+        "simple_query" => query::simple_query(client, tool_params.clone()).await,
+        "list_templates" => query::list_templates(client, tool_params.clone()).await,
+        "get_namespace_pages" => query::get_namespace_pages(client, tool_params.clone()).await,
         // Mutation tools
         "create_page" => mutate::create_page(client, tool_params.clone()).await,
         "update_block" => mutate::update_block(client, tool_params.clone()).await,
@@ -354,6 +364,11 @@ async fn handle_tool_call(
         "append_to_journal" => mutate::append_to_journal(client, tool_params.clone()).await,
         "set_block_property" => mutate::set_block_property(client, tool_params.clone()).await,
         "remove_block_property" => mutate::remove_block_property(client, tool_params.clone()).await,
+        "rename_page" => mutate::rename_page(client, tool_params.clone()).await,
+        "move_block" => mutate::move_block(client, tool_params.clone()).await,
+        "prepend_to_page" => mutate::prepend_to_page(client, tool_params.clone()).await,
+        "insert_batch_blocks" => mutate::insert_batch_blocks(client, tool_params.clone()).await,
+        "insert_template" => mutate::insert_template(client, tool_params.clone()).await,
         _ => {
             return HandlerResponse::error(
                 id,

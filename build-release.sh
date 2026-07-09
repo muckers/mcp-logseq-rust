@@ -4,5 +4,5 @@
 set -e
 
 cargo build --release
-codesign -s - --force target/release/mcp-logseq-rust
+codesign -s "Local Dev Signing" --force --options runtime target/release/mcp-logseq-rust
 echo "Build and signing complete: target/release/mcp-logseq-rust"
